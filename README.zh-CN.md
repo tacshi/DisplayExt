@@ -54,6 +54,9 @@ DisplayExt 只做这一件事，并且全部在菜单栏里完成。
 
 发布版本均使用 Developer ID 签名并经过 Apple 公证。每个版本都在 `SHA256SUMS` 中列出了磁盘映像的校验和。
 
+DisplayExt 会自动保持最新：启动几秒后及此后每 4 小时检查一次新版本，并在后台下载。下载完成后，菜单中会出现
+**重启以更新**。在菜单中选择 **检查更新…** 可立即检查并查看发布说明。
+
 ## 使用
 
 1. 打开 DisplayExt，它的图标会出现在菜单栏中；选择 **设置…**。
@@ -131,7 +134,7 @@ make publish VERSION=0.2.0
 ```
 
 [`scripts/publish.sh`](scripts/publish.sh) 会检查提交位于 `main`、已推送且工作区干净，版本号也晚于上一个版本。
-它构建磁盘映像，连同 `SHA256SUMS` 上传到草稿版本，然后为该提交打标签、推送标签并正式发布。
+它构建磁盘映像，连同 `SHA256SUMS` 以及已安装副本用来更新的已签名更新归档和清单上传到草稿版本，然后为该提交打标签、推送标签并正式发布。
 发布说明取自 `CHANGELOG.md` 中该版本的章节，没有时则根据提交记录起草并请你确认。试运行只做检查，并显示发布说明和将执行的步骤。
 
 它使用钥匙串中的 Developer ID Application 身份（或 `DEVELOPER_ID_APPLICATION`）签名，
@@ -140,6 +143,10 @@ make publish VERSION=0.2.0
 ```bash
 xcrun notarytool store-credentials DisplayExt --apple-id <id> --team-id <team>
 ```
+
+更新使用 `~/Library/Application Support/mygo/update-keys/DisplayExt/mygo-update.key` 中的密钥签名，
+也可以用 `DISPLAYEXT_UPDATE_KEY` 指定文件，或设置 `MYGO_UPDATER_PRIVATE_KEY`。它的公钥是
+[`mygo.json`](mygo.json) 中的 `updates.publicKey`。已安装的副本只接受用它签名的更新，请妥善备份。调试版本不会自动更新。
 
 ## 翻译
 

@@ -13,5 +13,9 @@
     "infoPlist": {
       "LSUIElement": true
     }
+  },
+  "updates": {
+    "publicKey": "ZyAYXsh/AUfIbp/1R8J04XrB6bKow4+9dCHQkveYswA=",
+    "github": "tacshi/DisplayExt"
   }
 }

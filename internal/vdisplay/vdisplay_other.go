@@ -31,10 +31,8 @@ func (d *Display) WaitActive(time.Duration) bool { return false }
 
 func (d *Display) ApplyMode(Spec) error { return errUnsupported }
 
-type Mode struct {
-	PointsW, PointsH int
-	PixelsW, PixelsH int
-	RefreshHz        float64
-}
-
 func CurrentMode(uint32) (Mode, bool) { return Mode{}, false }
+
+func OtherModes() map[uint32]Mode { return nil }
+
+func SetMode(uint32, Mode) error { return errUnsupported }

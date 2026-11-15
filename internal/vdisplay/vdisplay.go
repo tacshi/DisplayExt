@@ -1,6 +1,8 @@
 package vdisplay
 
 import (
+	"fmt"
+	"math"
 	"time"
 
 	"displayext/internal/config"
@@ -57,3 +59,19 @@ type Options struct {
 }
 
 var DefaultOptions = Options{}
+
+type Mode struct {
+	PointsW, PointsH int
+	PixelsW, PixelsH int
+	RefreshHz        float64
+}
+
+func (m Mode) String() string {
+	return fmt.Sprintf("%d×%d (%d×%d px) @%gHz", m.PointsW, m.PointsH, m.PixelsW, m.PixelsH, m.RefreshHz)
+}
+
+func (m Mode) Same(o Mode) bool {
+	return m.PointsW == o.PointsW && m.PointsH == o.PointsH &&
+		m.PixelsW == o.PixelsW && m.PixelsH == o.PixelsH &&
+		math.Abs(m.RefreshHz-o.RefreshHz) < 0.5
+}

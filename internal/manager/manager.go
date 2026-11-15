@@ -20,6 +20,9 @@ import (
 const (
 	readyTimeout = 20 * time.Second
 	stopTimeout  = 4 * time.Second
+	settleTime   = 2 * time.Second
+	settlePoll   = 200 * time.Millisecond
+	maxRestores  = 2
 )
 
 type Status struct {
@@ -36,6 +39,9 @@ type Manager struct {
 	exe      string
 	stderr   io.Writer
 	onChange func(id string)
+
+	modes   func() map[uint32]vdisplay.Mode
+	setMode func(id uint32, m vdisplay.Mode) error
 
 	mu      sync.Mutex
 	status  map[string]Status
@@ -60,6 +66,8 @@ func New(exe string, stderr io.Writer, onChange func(id string)) *Manager {
 		exe:      exe,
 		stderr:   stderr,
 		onChange: onChange,
+		modes:    vdisplay.OtherModes,
+		setMode:  vdisplay.SetMode,
 		status:   map[string]Status{},
 		running:  map[string]*helper{},
 		failed:   map[string]string{},
@@ -95,11 +103,16 @@ func (m *Manager) StopAll() {
 		hs[id] = h
 	}
 	m.mu.Unlock()
+	if len(hs) == 0 {
+		return
+	}
+	before := m.snapshot()
 	var wg sync.WaitGroup
 	for _, h := range hs {
 		wg.Go(func() { stop(h) })
 	}
 	wg.Wait()
+	m.keep(before)
 }
 
 func (m *Manager) loop() {
@@ -186,8 +199,10 @@ func (m *Manager) stopOne(id string) {
 	m.mu.Unlock()
 	m.notify(id)
 
+	before := m.snapshot()
 	stop(h)
 	log.Printf("display %s: unmounted", id)
+	m.keep(before)
 
 	m.mu.Lock()
 	if m.running[id] == h {
@@ -213,6 +228,7 @@ func (m *Manager) start(id, spec string) {
 	m.set(id, Status{Busy: true})
 
 	log.Printf("display %s: starting helper", id)
+	before := m.snapshot()
 	cmd := exec.Command(m.exe, host.Flag, spec)
 	cmd.Stderr = m.stderr
 	stdin, err := cmd.StdinPipe()
@@ -262,6 +278,7 @@ func (m *Manager) start(id, spec string) {
 		h.stopping = true
 		stop(h)
 		m.fail(id, spec, ready.Error)
+		m.keep(before)
 		return
 	}
 	log.Printf("display %s: mounted as display %d (pid %d)", id, ready.DisplayID, cmd.Process.Pid)
@@ -274,6 +291,7 @@ func (m *Manager) start(id, spec string) {
 	m.status[id] = Status{Mounted: true, DisplayID: ready.DisplayID, ModeErr: ready.ModeError}
 	m.mu.Unlock()
 	m.notify(id)
+	m.keep(before)
 
 	go func() {
 		<-h.done
@@ -309,5 +327,36 @@ func (m *Manager) set(id string, st Status) {
 func (m *Manager) notify(id string) {
 	if m.onChange != nil {
 		m.onChange(id)
+	}
+}
+
+func (m *Manager) snapshot() map[uint32]vdisplay.Mode {
+	if m.modes == nil {
+		return nil
+	}
+	return m.modes()
+}
+
+func (m *Manager) keep(before map[uint32]vdisplay.Mode) {
+	if len(before) == 0 || m.modes == nil || m.setMode == nil {
+		return
+	}
+	tries := map[uint32]int{}
+	for deadline := time.Now().Add(settleTime); ; {
+		for id, cur := range m.modes() {
+			want, ok := before[id]
+			if !ok || cur.Same(want) || tries[id] >= maxRestores {
+				continue
+			}
+			tries[id]++
+			log.Printf("screen %d: macOS switched it to %s, restoring %s", id, cur, want)
+			if err := m.setMode(id, want); err != nil {
+				log.Printf("screen %d: could not restore its mode: %v", id, err)
+			}
+		}
+		if time.Now().After(deadline) {
+			return
+		}
+		time.Sleep(settlePoll)
 	}
 }

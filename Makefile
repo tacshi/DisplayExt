@@ -4,7 +4,7 @@ BUILD_DIR ?= build
 VERSION ?=
 ARCH ?=
 
-.PHONY: check test debug release icons screenshots tag clean
+.PHONY: check test debug release publish icons screenshots clean
 
 check:
 	@for tool in golangci-lint govulncheck gosec; do \
@@ -28,15 +28,14 @@ debug:
 release:
 	scripts/build-release.sh $(VERSION) $(if $(ARCH),--arch $(ARCH))
 
+publish:
+	scripts/publish.sh $(VERSION) $(if $(filter 1 true yes,$(DRY_RUN)),--dry-run)
+
 icons:
 	scripts/render-icons.sh
 
 screenshots:
 	scripts/screenshots.sh
-
-tag:
-	@[ -n "$(VERSION)" ] || { echo "make tag needs VERSION, as in make tag VERSION=0.2.0" >&2; exit 1; }
-	scripts/tag-release.sh $(VERSION) $(if $(filter 1 true yes,$(PUSH)),--push)
 
 clean:
 	@case "$(strip $(BUILD_DIR))" in \

@@ -8,13 +8,13 @@ usage() {
 Builds DisplayExt's release disk images, signed with a Developer ID and
 notarized.
 
-  scripts/build-release.sh                   # arm64, x64 and universal, the version in mygo.json
+  scripts/build-release.sh                   # arm64, amd64 and universal, the version in mygo.json
   scripts/build-release.sh 0.2.0             # another version
-  scripts/build-release.sh --arch arm64      # only some: arm64, x64, universal
+  scripts/build-release.sh --arch arm64      # only some: arm64, amd64, universal
   scripts/build-release.sh --skip-notarize   # signed, not notarized (faster)
   scripts/build-release.sh -o out            # another output directory
 
-The disk images go to build/release: DisplayExt-<version>-{arm64,x64,universal}.dmg
+The disk images go to build/release: DisplayExt-<version>-{arm64,amd64,universal}.dmg
 for Apple silicon, Intel and both, beside a folder per architecture with the app.
 
 Signs with DEVELOPER_ID_APPLICATION, or the keychain's one Developer ID
@@ -33,7 +33,7 @@ OUT_DIR="$ROOT_DIR/build/release"
 while (($#)); do
 	case "$1" in
 	--arch)
-		[[ $# -ge 2 ]] || die "--arch needs arm64, x64 or universal"
+		[[ $# -ge 2 ]] || die "--arch needs arm64, amd64 or universal"
 		ARCHES+=("$2")
 		shift
 		;;
@@ -60,11 +60,11 @@ check_macos
 check_tools go python3 xcrun security
 [[ -n "$VERSION" ]] || VERSION="$(config_value version)"
 check_version "$VERSION"
-((${#ARCHES[@]} > 0)) || ARCHES=(arm64 x64 universal)
+((${#ARCHES[@]} > 0)) || ARCHES=(arm64 amd64 universal)
 
 PLATFORMS=()
 for arch in "${ARCHES[@]}"; do
-	if [[ "$arch" == amd64 ]]; then arch=x64; fi
+	if [[ "$arch" == x64 ]]; then arch=amd64; fi
 	PLATFORMS+=("darwin/$(goarch "$arch")")
 done
 
@@ -86,7 +86,7 @@ go tool mygo build -platform "$(
 )" -o "$OUT_DIR" "${BUILD_ARGS[@]}"
 
 for arch in "${ARCHES[@]}"; do
-	if [[ "$arch" == amd64 ]]; then arch=x64; fi
+	if [[ "$arch" == x64 ]]; then arch=amd64; fi
 	case "$arch" in
 	universal) dir=darwin-universal dmg="$SLUG-$VERSION.dmg" ;;
 	*) dir="darwin-$(goarch "$arch")" dmg="$SLUG-$VERSION-$(goarch "$arch").dmg" ;;

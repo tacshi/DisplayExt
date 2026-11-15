@@ -9,6 +9,10 @@ Publishes a DisplayExt release to GitHub. It builds the disk images here,
 signed with a Developer ID and notarized, puts them with SHA256SUMS on a draft
 release, then tags the commit, pushes the tag and publishes the release.
 
+With them go the update archives, deltas and manifests, signed with the update
+key, that installed copies read from the latest release to update themselves.
+The manifests are uploaded last, and a release without all three is refused.
+
   scripts/publish.sh                   # the version in mygo.json
   scripts/publish.sh 0.2.0             # another version
   scripts/publish.sh 0.2.0 --dry-run   # check, show the notes and the steps
@@ -16,15 +20,16 @@ release, then tags the commit, pushes the tag and publishes the release.
 
 Signing and notarization are as in scripts/build-release.sh: the identity is
 DEVELOPER_ID_APPLICATION, or the keychain's one Developer ID Application
-identity, and the notarytool keychain profile is DISPLAYEXT_NOTARY_PROFILE,
-"DisplayExt" by default. Uploads need the GitHub CLI, signed in.
+identity, the notarytool keychain profile is DISPLAYEXT_NOTARY_PROFILE,
+"DisplayExt" by default, and the update key is MYGO_UPDATER_PRIVATE_KEY or the
+file DISPLAYEXT_UPDATE_KEY. Uploads need the GitHub CLI, signed in.
 
 The commit must be on origin, the working tree clean, and the version after
 every v* tag's, here and on origin. The committed mygo.json is never edited:
 the build gets the version for the run only.
 
 The notes are the "## <version>" section of CHANGELOG.md, used verbatim when
-it has one. Otherwise they are drafted from the subjects of the commits since
+it has one, on the release and in the update window. Otherwise they are drafted from the subjects of the commits since
 the last v* tag and shown for review: [y]es publishes them, [e]dit opens them
 in $EDITOR and shows them again, anything else aborts.
 
@@ -76,8 +81,16 @@ else
 fi
 NOTES_FILE="$WORK_DIR/notes.md"
 BODY_FILE="$WORK_DIR/body.md"
+CHANGELOG_FILE="$WORK_DIR/changelog.md"
+SLUG="$(config_value slug)"
 IMAGES=("DisplayExt-$VERSION-universal.dmg" "DisplayExt-$VERSION-arm64.dmg" "DisplayExt-$VERSION-amd64.dmg")
-ASSETS=("${IMAGES[@]}" SHA256SUMS)
+ARCHIVES=()
+MANIFESTS=()
+for platform in darwin-universal darwin-arm64 darwin-amd64; do
+	ARCHIVES+=("$SLUG-$VERSION-$platform.tar.gz")
+	MANIFESTS+=("update-$platform.json")
+done
+ASSETS=("${IMAGES[@]}" "${ARCHIVES[@]}" "${MANIFESTS[@]}" SHA256SUMS)
 
 PROBLEMS=0
 problem() {
@@ -198,6 +211,10 @@ info "DisplayExt $VERSION from ${BRANCH:-a detached HEAD} at $SHORT, as $TAG of 
 
 check signing_identity
 check notary_profile
+check update_key
+if [[ "$(config_value updates.github)" != "$REPO" ]]; then
+	problem "mygo.json has installed copies look for updates on $(config_value updates.github), but origin is $REPO"
+fi
 GH_READY=false
 if gh_ready; then GH_READY=true; else problem "uploads need gh auth login, or GH_TOKEN"; fi
 
@@ -314,18 +331,28 @@ fi
 
 if ! $RESUME; then
 	$DRY_RUN || info "building DisplayExt $VERSION at $SHORT"
-	run "$ROOT_DIR/scripts/build-release.sh" "$VERSION" -o "$OUT_DIR"
+	printf '## %s\n\n' "$VERSION" >"$CHANGELOG_FILE"
+	cat "$NOTES_FILE" >>"$CHANGELOG_FILE"
+	run "$ROOT_DIR/scripts/build-release.sh" "$VERSION" -o "$OUT_DIR" --notes "$CHANGELOG_FILE"
+	DELTAS=()
+	for delta in "$OUT_DIR"/*-to-"$VERSION"-darwin-*.delta; do
+		if [[ -f "$delta" ]]; then DELTAS+=("$(basename "$delta")"); fi
+	done
+	SUMMED=("${IMAGES[@]}" "${ARCHIVES[@]}" ${DELTAS[@]+"${DELTAS[@]}"})
 	if $DRY_RUN; then
 		printf '  would write:  %s\n' "${OUT_DIR#"$ROOT_DIR/"}/SHA256SUMS"
 	else
 		[[ "$(git rev-parse HEAD)" == "$COMMIT" && -z "$(git status --porcelain --untracked-files=no)" ]] ||
 			die "the checkout changed while $SHORT was built, so the build is not of the commit $TAG would name; nothing was uploaded"
-		(cd "$OUT_DIR" && shasum -a 256 "${IMAGES[@]}" >SHA256SUMS)
+		(cd "$OUT_DIR" && shasum -a 256 "${SUMMED[@]}" >SHA256SUMS)
 	fi
 	FILES=()
-	for name in "${ASSETS[@]}"; do FILES+=("$OUT_DIR/$name"); done
+	for name in "${SUMMED[@]}" SHA256SUMS; do FILES+=("$OUT_DIR/$name"); done
 	run gh release create "$TAG" --repo "$REPO" --draft --target "$COMMIT" \
 		--title "DisplayExt $VERSION" --notes-file "$BODY_FILE" "${FILES[@]}"
+	FILES=()
+	for name in "${MANIFESTS[@]}"; do FILES+=("$OUT_DIR/$name"); done
+	run gh release upload "$TAG" --repo "$REPO" --clobber "${FILES[@]}"
 fi
 
 if [[ -z "$LOCAL_TAG" && -z "$REMOTE_TAG" ]]; then

@@ -64,6 +64,11 @@ DisplayExt does just this one job, and does it from the menu bar.
 Releases are signed with a Developer ID and notarized by Apple. Each release
 lists the images' checksums in `SHA256SUMS`.
 
+DisplayExt keeps itself up to date: a few seconds after it starts, and every
+4 hours after that, it looks for a newer release and downloads it in the
+background. The menu then offers **Restart to Update**. **Check for Updates…**
+in the menu looks right away and shows the release notes.
+
 ## Use
 
 1. Open DisplayExt. Its icon appears in the menu bar; choose **Settings…**.
@@ -160,7 +165,8 @@ make publish VERSION=0.2.0
 [`scripts/publish.sh`](scripts/publish.sh) checks that the commit is on
 `main`, pushed and clean, and that the version comes after the last release.
 It builds the disk images and puts them with `SHA256SUMS` on a draft release,
-then tags the commit, pushes the tag and publishes the release. The notes are
+with the signed update archives and manifests that installed copies update
+from, then tags the commit, pushes the tag and publishes the release. The notes are
 the version's section of `CHANGELOG.md`, or are drafted from the commits for
 review. A dry run checks and shows the notes and the steps.
 
@@ -171,6 +177,13 @@ It signs with the keychain's Developer ID Application identity, or
 ```bash
 xcrun notarytool store-credentials DisplayExt --apple-id <id> --team-id <team>
 ```
+
+Updates are signed with the key in
+`~/Library/Application Support/mygo/update-keys/DisplayExt/mygo-update.key`,
+or the file `DISPLAYEXT_UPDATE_KEY`, or `MYGO_UPDATER_PRIVATE_KEY`. Its public
+half is `updates.publicKey` in [`mygo.json`](mygo.json). Installed copies only
+accept updates signed with it, so keep a copy somewhere safe. Debug builds
+never update themselves.
 
 ## Translations
 

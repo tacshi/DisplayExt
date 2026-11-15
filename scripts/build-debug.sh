@@ -8,7 +8,8 @@ usage() {
 Builds DisplayExt Debug, which runs beside a release copy: it keeps MyGo's
 development features, and is named "DisplayExt Debug" with the identifier
 com.displayext.app.debug, so it has its own settings, display identities,
-log and single-instance lock.
+log and single-instance lock. It never updates itself, so a release never
+replaces it.
 
   scripts/build-debug.sh              # for this Mac's architecture
   scripts/build-debug.sh --open       # build, then launch it
@@ -45,7 +46,7 @@ GOARCH="$(goarch "$ARCH")"
 [[ "$GOARCH" != universal ]] || die "debug builds are arm64 or x64"
 
 NAME="DisplayExt Debug"
-patch_config "name=$NAME" "slug=displayext-debug" "identifier=$(config_value identifier).debug"
+patch_config "name=$NAME" "slug=displayext-debug" "identifier=$(config_value identifier).debug" -updates
 
 OUT="build/mac-debug"
 BUILT="$OUT/darwin-$GOARCH/$NAME.app"

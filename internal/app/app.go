@@ -20,6 +20,8 @@ import (
 	"displayext/locales"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/plugins/updater"
+	"github.com/egoist/mygo/plugins/updater/native"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -41,6 +43,11 @@ type App struct {
 	quitting bool
 	active   bool
 	stopUU   context.CancelFunc
+
+	post        func(func())
+	updatable   bool
+	updateBusy  bool
+	updateReady string
 }
 
 func Run() error {
@@ -54,7 +61,7 @@ func Run() error {
 	log.SetOutput(logw)
 	log.Printf("DisplayExt starting (pid %d)", os.Getpid())
 
-	a := &App{name: name, sw: autoswitch.New()}
+	a := &App{name: name, sw: autoswitch.New(), post: mygo.RunOnMain}
 	if err := a.loadConfig(); err != nil {
 		return err
 	}
@@ -68,6 +75,7 @@ func Run() error {
 	}
 	a.mgr = manager.New(exe, logw, func(string) { mygo.RunOnMain(a.changed) })
 
+	mygo.Use(native.New(updater.Options{DisableAutomaticChecks: true}))
 	mygo.App.OnSecondInstance(func([]string, string) { a.showSettings() })
 	mygo.App.OnLocaleChanged(func(string) { a.changed() })
 	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) {
@@ -153,6 +161,7 @@ func (a *App) ready() {
 		func(st uudetect.State) { mygo.RunOnMain(func() { a.uuChanged(st) }) },
 		func(err error) { log.Println("uudetect:", err) })
 
+	a.startUpdates()
 	a.apply()
 	if a.configKept != "" || (a.firstRun && !mygo.App.WasOpenedAtLogin()) {
 		a.showSettings()
@@ -260,6 +269,7 @@ func (a *App) menu() *mygo.Menu {
 			},
 		},
 		mygo.Separator(),
+		a.updateMenuItem(),
 		&mygo.MenuItem{Role: mygo.RoleQuit, Label: locales.MenuQuit(a.name)},
 	)
 	return mygo.NewMenu(items)

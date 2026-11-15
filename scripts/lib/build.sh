@@ -158,6 +158,14 @@ notary_profile() {
 	printf '%s\n' "$profile"
 }
 
+update_key() {
+	[[ -z "${MYGO_UPDATER_PRIVATE_KEY:-}" ]] || return 0
+	local file
+	file="$(abs_path "${DISPLAYEXT_UPDATE_KEY:-$HOME/Library/Application Support/mygo/update-keys/DisplayExt/mygo-update.key}")"
+	[[ -f "$file" ]] || die "no update signing key at $file; set DISPLAYEXT_UPDATE_KEY or MYGO_UPDATER_PRIVATE_KEY"
+	printf '%s\n' "$file"
+}
+
 version_after() {
 	local a b i
 	IFS=. read -r -a a <<<"$1"

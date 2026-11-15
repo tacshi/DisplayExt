@@ -9,6 +9,8 @@
   "menuError": "出错：{message}",
   "menuFollowsUU": "跟随 UU远程",
   "working": "处理中…",
+  "menuRestartToUpdate": "重启以更新",
+  "menuUpdateReady": "DisplayExt {version} 已就绪",
 
   "uuConnected": "已连接",
   "uuIdle": "未连接",

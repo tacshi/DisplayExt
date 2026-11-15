@@ -124,6 +124,26 @@ func (msgs Messages) Working() string {
 	return Catalog.Format(msgs.locale, "working", nil)
 }
 
+// MenuRestartToUpdate says "Restart to Update"
+// in the language the app shows.
+func MenuRestartToUpdate() string { return In(i18n.Locale()).MenuRestartToUpdate() }
+
+// MenuRestartToUpdate says "Restart to Update"
+// in the language of msgs.
+func (msgs Messages) MenuRestartToUpdate() string {
+	return Catalog.Format(msgs.locale, "menuRestartToUpdate", nil)
+}
+
+// MenuUpdateReady says "DisplayExt {version} is ready"
+// in the language the app shows.
+func MenuUpdateReady(version string) string { return In(i18n.Locale()).MenuUpdateReady(version) }
+
+// MenuUpdateReady says "DisplayExt {version} is ready"
+// in the language of msgs.
+func (msgs Messages) MenuUpdateReady(version string) string {
+	return Catalog.Format(msgs.locale, "menuUpdateReady", map[string]any{"version": version})
+}
+
 // UuConnected says "Connected"
 // in the language the app shows.
 func UuConnected() string { return In(i18n.Locale()).UuConnected() }

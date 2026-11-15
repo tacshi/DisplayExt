@@ -50,8 +50,14 @@ var (
 	cgDisplayModeGetPixelWidth   func(mode uintptr) uint64
 	cgDisplayModeGetPixelHeight  func(mode uintptr) uint64
 	cgDisplayModeGetRefreshRate  func(mode uintptr) float64
-	cgDisplaySetDisplayMode      func(id uint32, mode uintptr, options uintptr) int32
+	cgDisplayVendorNumber        func(id uint32) uint32
+	cgBeginDisplayConfiguration  func(config *uintptr) int32
+	cgConfigureDisplayWithMode   func(config uintptr, id uint32, mode uintptr, options uintptr) int32
+	cgCompleteDisplayConfig      func(config uintptr, option uint32) int32
+	cgCancelDisplayConfiguration func(config uintptr) int32
 )
+
+const cgConfigurePermanently = 2
 
 func load() error {
 	loadOnce.Do(func() {
@@ -89,7 +95,11 @@ func load() error {
 		purego.RegisterLibFunc(&cgDisplayModeGetPixelWidth, cg, "CGDisplayModeGetPixelWidth")
 		purego.RegisterLibFunc(&cgDisplayModeGetPixelHeight, cg, "CGDisplayModeGetPixelHeight")
 		purego.RegisterLibFunc(&cgDisplayModeGetRefreshRate, cg, "CGDisplayModeGetRefreshRate")
-		purego.RegisterLibFunc(&cgDisplaySetDisplayMode, cg, "CGDisplaySetDisplayMode")
+		purego.RegisterLibFunc(&cgDisplayVendorNumber, cg, "CGDisplayVendorNumber")
+		purego.RegisterLibFunc(&cgBeginDisplayConfiguration, cg, "CGBeginDisplayConfiguration")
+		purego.RegisterLibFunc(&cgConfigureDisplayWithMode, cg, "CGConfigureDisplayWithDisplayMode")
+		purego.RegisterLibFunc(&cgCompleteDisplayConfig, cg, "CGCompleteDisplayConfiguration")
+		purego.RegisterLibFunc(&cgCancelDisplayConfiguration, cg, "CGCancelDisplayConfiguration")
 	})
 	return loadErr
 }
@@ -171,14 +181,14 @@ func (d *Display) WaitActive(timeout time.Duration) bool { return waitActive(d.i
 
 func (d *Display) ApplyMode(s Spec) error { return applyMode(d.id, s) }
 
-type Mode struct {
-	PointsW, PointsH int
-	PixelsW, PixelsH int
-	RefreshHz        float64
-}
-
-func (m Mode) String() string {
-	return fmt.Sprintf("%d×%d (%d×%d px) @%gHz", m.PointsW, m.PointsH, m.PixelsW, m.PixelsH, m.RefreshHz)
+func modeOf(m uintptr) Mode {
+	return Mode{
+		PointsW:   int(cgDisplayModeGetWidth(m)),
+		PointsH:   int(cgDisplayModeGetHeight(m)),
+		PixelsW:   int(cgDisplayModeGetPixelWidth(m)),
+		PixelsH:   int(cgDisplayModeGetPixelHeight(m)),
+		RefreshHz: cgDisplayModeGetRefreshRate(m),
+	}
 }
 
 func CurrentMode(id uint32) (Mode, bool) {
@@ -190,13 +200,29 @@ func CurrentMode(id uint32) (Mode, bool) {
 		return Mode{}, false
 	}
 	defer cgDisplayModeRelease(m)
-	return Mode{
-		PointsW:   int(cgDisplayModeGetWidth(m)),
-		PointsH:   int(cgDisplayModeGetHeight(m)),
-		PixelsW:   int(cgDisplayModeGetPixelWidth(m)),
-		PixelsH:   int(cgDisplayModeGetPixelHeight(m)),
-		RefreshHz: cgDisplayModeGetRefreshRate(m),
-	}, true
+	return modeOf(m), true
+}
+
+func OtherModes() map[uint32]Mode {
+	out := map[uint32]Mode{}
+	for _, id := range ActiveDisplays() {
+		if cgDisplayVendorNumber(id) == VendorID {
+			continue
+		}
+		if m, ok := CurrentMode(id); ok {
+			out[id] = m
+		}
+	}
+	return out
+}
+
+func SetMode(id uint32, m Mode) error {
+	if err := load(); err != nil {
+		return err
+	}
+	return setMode(id, func(c Mode) bool {
+		return c.PointsW == m.PointsW && c.PointsH == m.PointsH && c.PixelsW == m.PixelsW && c.PixelsH == m.PixelsH
+	}, m.RefreshHz)
 }
 
 func create(s Spec, o Options) (*Display, error) {
@@ -302,25 +328,22 @@ func applyMode(id uint32, s Spec) error {
 	if s.HiDPI {
 		scale = 2
 	}
-	want := func(mode uintptr) bool {
-		return int(cgDisplayModeGetWidth(mode)) == s.PointsW &&
-			int(cgDisplayModeGetHeight(mode)) == s.PointsH &&
-			int(cgDisplayModeGetPixelWidth(mode)) == s.PointsW*scale &&
-			int(cgDisplayModeGetPixelHeight(mode)) == s.PointsH*scale
+	want := Mode{PointsW: s.PointsW, PointsH: s.PointsH, PixelsW: s.PointsW * scale, PixelsH: s.PointsH * scale, RefreshHz: float64(s.RefreshHz)}
+	if cur, ok := CurrentMode(id); ok && cur.Same(want) {
+		return nil
 	}
-	if cur := cgDisplayCopyDisplayMode(id); cur != 0 {
-		ok := want(cur) && math.Abs(cgDisplayModeGetRefreshRate(cur)-float64(s.RefreshHz)) < 0.5
-		cgDisplayModeRelease(cur)
-		if ok {
-			return nil
-		}
+	if err := SetMode(id, want); err != nil {
+		return fmt.Errorf("vdisplay: display %d: %w", id, err)
 	}
+	return nil
+}
 
+func setMode(id uint32, match func(Mode) bool, hz float64) error {
 	var list objc.ID
 	objc.AutoreleasePool(func() {
 		opts := objc.ClassID("NSDictionary").Send(objc.Sel("dictionaryWithObject:forKey:"),
 			objc.ClassID("NSNumber").Send(objc.Sel("numberWithBool:"), true),
-			objc.NSString("kCGDisplayShowDuplicateLowResolutionModes"))
+			objc.NSString("kCGDisplayResolution"))
 
 		for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); {
 			if list = cgDisplayCopyAllDisplayModes(id, opts); list != 0 && list.Send(objc.Sel("count")) > 0 {
@@ -335,7 +358,7 @@ func applyMode(id uint32, s Spec) error {
 		}
 	})
 	if list == 0 {
-		return fmt.Errorf("vdisplay: display %d reports no modes", id)
+		return fmt.Errorf("reports no modes")
 	}
 	defer list.Send(objc.Sel("release"))
 
@@ -344,18 +367,27 @@ func applyMode(id uint32, s Spec) error {
 	n := int(list.Send(objc.Sel("count")))
 	for i := range n {
 		m := uintptr(list.Send(objc.Sel("objectAtIndex:"), i))
-		if !want(m) {
+		mode := modeOf(m)
+		if !match(mode) {
 			continue
 		}
-		if diff := math.Abs(cgDisplayModeGetRefreshRate(m) - float64(s.RefreshHz)); diff < bestDiff {
+		if diff := math.Abs(mode.RefreshHz - hz); diff < bestDiff {
 			best, bestDiff = m, diff
 		}
 	}
 	if best == 0 {
-		return fmt.Errorf("vdisplay: display %d does not offer %d×%d (HiDPI %v)", id, s.PointsW, s.PointsH, s.HiDPI)
+		return fmt.Errorf("does not offer that mode")
 	}
-	if e := cgDisplaySetDisplayMode(id, best, 0); e != 0 {
-		return fmt.Errorf("vdisplay: CGDisplaySetDisplayMode: CGError %d", e)
+	var cfg uintptr
+	if e := cgBeginDisplayConfiguration(&cfg); e != 0 {
+		return fmt.Errorf("CGBeginDisplayConfiguration: CGError %d", e)
+	}
+	if e := cgConfigureDisplayWithMode(cfg, id, best, 0); e != 0 {
+		cgCancelDisplayConfiguration(cfg)
+		return fmt.Errorf("CGConfigureDisplayWithDisplayMode: CGError %d", e)
+	}
+	if e := cgCompleteDisplayConfig(cfg, cgConfigurePermanently); e != 0 {
+		return fmt.Errorf("CGCompleteDisplayConfiguration: CGError %d", e)
 	}
 	return nil
 }

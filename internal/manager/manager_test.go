@@ -6,11 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"displayext/internal/config"
 	"displayext/internal/host"
+	"displayext/internal/vdisplay"
 )
 
 const (
@@ -55,6 +57,7 @@ func newManager(t *testing.T, mode string) *Manager {
 		t.Fatal(err)
 	}
 	m := New(exe, io.Discard, nil)
+	m.modes, m.setMode = nil, nil
 	t.Cleanup(m.StopAll)
 	return m
 }
@@ -239,4 +242,47 @@ func TestUnwantedFailureIsCleared(t *testing.T) {
 	waitFor(t, "failure", func() bool { return m.Status(d.ID).Err != "" })
 	m.Sync(nil)
 	waitFor(t, "failure cleared", func() bool { return idle(m) && m.Status(d.ID) == Status{} })
+}
+
+func TestOtherScreensKeepTheirMode(t *testing.T) {
+	m := newManager(t, "ok")
+	sharp := vdisplay.Mode{PointsW: 2560, PointsH: 1440, PixelsW: 5120, PixelsH: 2880, RefreshHz: 60}
+	blurry := vdisplay.Mode{PointsW: 1920, PointsH: 1080, PixelsW: 3840, PixelsH: 2160, RefreshHz: 60}
+
+	var mu sync.Mutex
+	cur, armed, restored := sharp, true, 0
+	m.modes = func() map[uint32]vdisplay.Mode {
+		mu.Lock()
+		defer mu.Unlock()
+		out := map[uint32]vdisplay.Mode{1: cur}
+		if armed {
+			cur, armed = blurry, false
+		}
+		return out
+	}
+	m.setMode = func(id uint32, want vdisplay.Mode) error {
+		mu.Lock()
+		defer mu.Unlock()
+		if id != 1 {
+			t.Errorf("restored screen %d, want 1", id)
+		}
+		cur = want
+		restored++
+		return nil
+	}
+	state := func() (vdisplay.Mode, int) {
+		mu.Lock()
+		defer mu.Unlock()
+		return cur, restored
+	}
+
+	d := config.Default().Displays[0]
+	m.Sync([]config.Display{d})
+	waitFor(t, "restored after mount", func() bool { c, n := state(); return n == 1 && c.Same(sharp) })
+
+	mu.Lock()
+	armed = true
+	mu.Unlock()
+	m.Sync(nil)
+	waitFor(t, "restored after unmount", func() bool { c, n := state(); return n == 2 && c.Same(sharp) })
 }

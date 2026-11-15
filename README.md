@@ -57,7 +57,8 @@ DisplayExt does just this one job, and does it from the menu bar.
 
 1. Download `DisplayExt-<version>-universal.dmg` from the
    [latest release](https://github.com/tacshi/DisplayExt/releases/latest).
-   It runs on every Mac; the `arm64` and `x64` images are smaller.
+   It runs on every Mac; the `arm64` (Apple silicon) and `amd64` (Intel)
+   images are smaller.
 2. Open it and drag DisplayExt to Applications.
 
 Releases are signed with a Developer ID and notarized by Apple. Each release
@@ -137,10 +138,10 @@ a released copy with its own settings and displays.
 | `make check` | gofmt, golangci-lint, govulncheck, gosec and a syntax check of the scripts |
 | `make test` | the tests with the race detector, and `mygo vet` |
 | `make debug` | DisplayExt Debug, signed ad hoc (`ARCH=x64` for Intel) |
-| `make release` | signed, notarized disk images for arm64, x64 and universal (`VERSION=`, `ARCH=`) |
+| `make release` | signed, notarized disk images for arm64, amd64 and universal (`VERSION=`, `ARCH=`) |
+| `make publish` | builds, tags and publishes a release on GitHub (`VERSION=`, `DRY_RUN=1`) |
 | `make icons` | renders the app and menu bar icons from `design/` |
 | `make screenshots` | renders the images in `docs/images` |
-| `make tag VERSION=0.2.0` | sets the version, commits and tags a release (`PUSH=1` pushes it) |
 | `make clean` | removes `build/` |
 
 `cmd/vdspike` checks which ways of creating a virtual display a Mac accepts,
@@ -148,23 +149,28 @@ which is the first thing to run on a new macOS.
 
 ## Releases
 
-Releases are built by GitHub Actions when a `v*` tag is pushed:
+Releases are built, signed and notarized on a Mac with the Developer ID in its
+keychain, then published to GitHub:
 
 ```bash
-make tag VERSION=0.2.0 PUSH=1
+make publish VERSION=0.2.0 DRY_RUN=1
+make publish VERSION=0.2.0
 ```
 
-The workflow checks that the tag matches the version in `mygo.json`, runs
-`make check` and the tests, builds and notarizes the disk images, and
-publishes them with `SHA256SUMS`. It needs these repository secrets:
+[`scripts/publish.sh`](scripts/publish.sh) checks that the commit is on
+`main`, pushed and clean, and that the version comes after the last release.
+It builds the disk images and puts them with `SHA256SUMS` on a draft release,
+then tags the commit, pushes the tag and publishes the release. The notes are
+the version's section of `CHANGELOG.md`, or are drafted from the commits for
+review. A dry run checks and shows the notes and the steps.
 
-| Secret | Value |
-|---|---|
-| `MACOS_CERTIFICATE` | the Developer ID Application certificate with its key, as a base64 `.p12` |
-| `MACOS_CERTIFICATE_PASSWORD` | the password of that `.p12` |
-| `APPLE_ID` | the Apple Account that notarizes |
-| `APPLE_TEAM_ID` | its team ID |
-| `APPLE_APP_PASSWORD` | an app-specific password of that account |
+It signs with the keychain's Developer ID Application identity, or
+`DEVELOPER_ID_APPLICATION`, and notarizes with the notarytool keychain profile
+`DisplayExt`, or `DISPLAYEXT_NOTARY_PROFILE`, made once with:
+
+```bash
+xcrun notarytool store-credentials DisplayExt --apple-id <id> --team-id <team>
+```
 
 ## Translations
 

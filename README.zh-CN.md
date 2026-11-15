@@ -49,7 +49,7 @@ DisplayExt 只做这一件事，并且全部在菜单栏里完成。
 ## 安装
 
 1. 从[最新版本](https://github.com/tacshi/DisplayExt/releases/latest)下载
-   `DisplayExt-<版本>-universal.dmg`。它适用于所有 Mac；`arm64` 和 `x64` 版本体积更小。
+   `DisplayExt-<版本>-universal.dmg`。它适用于所有 Mac；`arm64`（Apple 芯片）和 `amd64`（Intel）版本体积更小。
 2. 打开磁盘映像，把 DisplayExt 拖到“应用程序”文件夹。
 
 发布版本均使用 Developer ID 签名并经过 Apple 公证。每个版本都在 `SHA256SUMS` 中列出了磁盘映像的校验和。
@@ -113,32 +113,33 @@ make debug
 | `make check` | gofmt、golangci-lint、govulncheck、gosec，以及脚本语法检查 |
 | `make test` | 带竞态检测的测试，以及 `mygo vet` |
 | `make debug` | 构建 ad hoc 签名的 DisplayExt Debug（Intel 用 `ARCH=x64`） |
-| `make release` | 构建 arm64、x64 和 universal 的已签名、已公证磁盘映像（`VERSION=`、`ARCH=`） |
+| `make release` | 构建 arm64、amd64 和 universal 的已签名、已公证磁盘映像（`VERSION=`、`ARCH=`） |
+| `make publish` | 构建、打标签并在 GitHub 上发布版本（`VERSION=`、`DRY_RUN=1`） |
 | `make icons` | 从 `design/` 渲染应用图标和菜单栏图标 |
 | `make screenshots` | 渲染 `docs/images` 中的图片 |
-| `make tag VERSION=0.2.0` | 设置版本号、提交并打上发布标签（`PUSH=1` 会推送） |
 | `make clean` | 删除 `build/` |
 
 `cmd/vdspike` 用于检测当前 Mac 接受哪些创建虚拟显示器的方式，在新版 macOS 上应首先运行它。
 
 ## 发布
 
-推送 `v*` 标签后，GitHub Actions 会自动构建发布版本：
+发布版本在钥匙串中装有 Developer ID 的 Mac 上构建、签名并公证，然后发布到 GitHub：
 
 ```bash
-make tag VERSION=0.2.0 PUSH=1
+make publish VERSION=0.2.0 DRY_RUN=1
+make publish VERSION=0.2.0
 ```
 
-工作流会检查标签与 `mygo.json` 中的版本是否一致，运行 `make check` 和测试，构建并公证磁盘映像，
-最后连同 `SHA256SUMS` 一起发布。它需要以下仓库密钥：
+[`scripts/publish.sh`](scripts/publish.sh) 会检查提交位于 `main`、已推送且工作区干净，版本号也晚于上一个版本。
+它构建磁盘映像，连同 `SHA256SUMS` 上传到草稿版本，然后为该提交打标签、推送标签并正式发布。
+发布说明取自 `CHANGELOG.md` 中该版本的章节，没有时则根据提交记录起草并请你确认。试运行只做检查，并显示发布说明和将执行的步骤。
 
-| 密钥 | 内容 |
-|---|---|
-| `MACOS_CERTIFICATE` | 含私钥的 Developer ID Application 证书，base64 编码的 `.p12` |
-| `MACOS_CERTIFICATE_PASSWORD` | 该 `.p12` 的密码 |
-| `APPLE_ID` | 用于公证的 Apple 账户 |
-| `APPLE_TEAM_ID` | 该账户的团队 ID |
-| `APPLE_APP_PASSWORD` | 该账户的 App 专用密码 |
+它使用钥匙串中的 Developer ID Application 身份（或 `DEVELOPER_ID_APPLICATION`）签名，
+并使用 notarytool 钥匙串配置 `DisplayExt`（或 `DISPLAYEXT_NOTARY_PROFILE`）公证。该配置只需创建一次：
+
+```bash
+xcrun notarytool store-credentials DisplayExt --apple-id <id> --team-id <team>
+```
 
 ## 翻译
 

@@ -116,6 +116,8 @@ func serve(spec vdisplay.Spec, off []uint32, stdin io.Reader, stdout io.Writer) 
 	}
 	if err := vdisplay.TurnOn(off, scope); err != nil {
 		fmt.Fprintln(os.Stderr, "helper: turning screens back on:", err)
+		_ = d.Close()
+		return 1
 	}
 	_ = d.Close()
 	return 0

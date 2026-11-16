@@ -37,7 +37,7 @@ func TestSnapshot(t *testing.T) {
 			if shot.general {
 				s.showGeneral()
 			}
-			tt := ui.NewTesterWith(s.View, 820, 740, ui.TesterOptions{Dark: shot.dark})
+			tt := ui.NewTesterWith(s.View, 820, 830, ui.TesterOptions{Dark: shot.dark})
 			tt.SetLocale(lang)
 			tt.SetScale(2)
 			tt.SetTitleBar(ui.TitleBar{Height: 52, Left: 78, Bottom: 28})

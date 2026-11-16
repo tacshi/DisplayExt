@@ -24,7 +24,7 @@ import (
 
 const (
 	readyTimeout = 20 * time.Second
-	stopTimeout  = 4 * time.Second
+	stopTimeout  = 8 * time.Second
 	settleTime   = 2 * time.Second
 	settlePoll   = 200 * time.Millisecond
 	maxRestores  = 2
@@ -295,8 +295,11 @@ func (m *Manager) start(id, spec string, screensOff bool) {
 		}
 		close(lines)
 		_, _ = io.Copy(io.Discard, stdout)
-		_ = cmd.Wait()
-		m.restore(id, h.off)
+		if cmd.Wait() == nil {
+			m.forget(id)
+		} else {
+			m.restore(id, h.off)
+		}
 		close(h.done)
 	}()
 
@@ -431,10 +434,7 @@ func (m *Manager) markOff(id string, ids []uint32) {
 }
 
 func (m *Manager) restore(id string, ids []uint32) {
-	if len(ids) == 0 {
-		return
-	}
-	if m.active != nil && m.turnOn != nil {
+	if len(ids) > 0 && m.active != nil && m.turnOn != nil {
 		active := m.active()
 		var dark []uint32
 		for _, s := range ids {
@@ -446,10 +446,19 @@ func (m *Manager) restore(id string, ids []uint32) {
 			log.Printf("display %s: turning screens %v back on", id, dark)
 			if err := m.turnOn(dark); err != nil {
 				log.Printf("display %s: %v", id, err)
+				return
 			}
 		}
 	}
+	m.forget(id)
+}
+
+func (m *Manager) forget(id string) {
 	m.mu.Lock()
+	if _, ok := m.off[id]; !ok {
+		m.mu.Unlock()
+		return
+	}
 	delete(m.off, id)
 	all := m.allOff()
 	m.mu.Unlock()

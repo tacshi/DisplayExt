@@ -47,6 +47,10 @@ func fakeHelper() int {
 	case "fail":
 		fmt.Println(`{"error":"nope"}`)
 		return 1
+	case "left-off":
+		fmt.Println(`{"displayID":42}`)
+		_, _ = io.Copy(io.Discard, os.Stdin)
+		return 1
 	case "die":
 		fmt.Println(`{"displayID":42}`)
 		time.Sleep(200 * time.Millisecond)
@@ -300,6 +304,7 @@ func TestOtherScreensKeepTheirMode(t *testing.T) {
 type fakeScreens struct {
 	mu     sync.Mutex
 	dark   bool
+	broken bool
 	turned [][]uint32
 }
 
@@ -317,6 +322,9 @@ func (f *fakeScreens) install(m *Manager) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		f.turned = append(f.turned, ids)
+		if f.broken {
+			return fmt.Errorf("CGCompleteDisplayConfiguration: CGError 1001")
+		}
 		f.dark = false
 		return nil
 	}
@@ -408,6 +416,65 @@ func TestScreensBackOnWhenHelperDies(t *testing.T) {
 	}
 	if got := stateIDs(t, m); got != nil {
 		t.Errorf("state file still holds %v", got)
+	}
+}
+
+func TestQuitTrustsTheHelper(t *testing.T) {
+	m := newManager(t, "ok")
+	f := &fakeScreens{}
+	f.install(m)
+	d := config.Default().Displays[0]
+	d.ScreensOff = true
+
+	m.Sync([]config.Display{d})
+	waitFor(t, "mount", func() bool { return m.Status(d.ID).Mounted })
+	f.mu.Lock()
+	f.dark = true
+	f.mu.Unlock()
+	m.StopAll()
+	if c := f.calls(); len(c) != 0 {
+		t.Errorf("screens the helper had turned back on were turned on again: %v", c)
+	}
+	if got := stateIDs(t, m); got != nil {
+		t.Errorf("state file still holds %v after quitting", got)
+	}
+}
+
+func TestScreensBackOnWhenHelperCannot(t *testing.T) {
+	m := newManager(t, "left-off")
+	f := &fakeScreens{}
+	f.install(m)
+	d := config.Default().Displays[0]
+	d.ScreensOff = true
+
+	m.Sync([]config.Display{d})
+	waitFor(t, "mount", func() bool { return m.Status(d.ID).Mounted })
+	f.mu.Lock()
+	f.dark = true
+	f.mu.Unlock()
+	m.StopAll()
+	if c := f.calls(); len(c) != 1 || !slices.Equal(c[0], []uint32{7, 9}) {
+		t.Errorf("turned on %v, want [[7 9]]", c)
+	}
+	if got := stateIDs(t, m); got != nil {
+		t.Errorf("state file still holds %v", got)
+	}
+}
+
+func TestStateKeptWhenScreensStayOff(t *testing.T) {
+	m := newManager(t, "die")
+	f := &fakeScreens{dark: true, broken: true}
+	f.install(m)
+	d := config.Default().Displays[0]
+	d.ScreensOff = true
+
+	m.Sync([]config.Display{d})
+	waitFor(t, "death reported", func() bool { return strings.Contains(m.Status(d.ID).Err, "unexpectedly") })
+	if c := f.calls(); len(c) != 1 {
+		t.Errorf("turned on %v, want one try", c)
+	}
+	if got := stateIDs(t, m); !slices.Equal(got, []uint32{7, 9}) {
+		t.Errorf("state file holds %v, want [7 9] left for the watcher", got)
 	}
 }
 

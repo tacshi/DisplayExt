@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"displayext/internal/vdisplay"
 
@@ -19,6 +20,8 @@ import (
 const Flag = "--display-host"
 
 const StrategyEnv = "DISPLAYEXT_HOST_STRATEGY"
+
+const blackCheck = 500 * time.Millisecond
 
 type Ready struct {
 	DisplayID uint32 `json:"displayID,omitzero"`
@@ -74,15 +77,26 @@ func serve(spec vdisplay.Spec, off []uint32, stdin io.Reader, stdout io.Writer) 
 	}
 	var scope vdisplay.Scope
 	if len(off) > 0 {
-		if scope, err = vdisplay.TurnOff(off); err != nil {
+		if scope, err = vdisplay.TurnOff(off, d.ID()); err != nil {
 			r.ScreensError = err.Error()
 			off = nil
 		} else {
 			r.ScreensOff = off
 			fmt.Fprintf(os.Stderr, "helper: turned off screens %v %s\n", off, scope)
+			if err := vdisplay.Blackout(off); err != nil {
+				fmt.Fprintln(os.Stderr, "helper: blacking out screens:", err)
+			}
 		}
 	}
 	report(stdout, r)
+
+	black, blackDone := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(blackDone)
+		if len(off) > 0 {
+			vdisplay.KeepBlack(off, blackCheck, black)
+		}
+	}()
 
 	stop := make(chan struct{}, 2)
 	go func() {
@@ -94,6 +108,11 @@ func serve(spec vdisplay.Spec, off []uint32, stdin io.Reader, stdout io.Writer) 
 	select {
 	case <-stop:
 	case <-sig:
+	}
+	close(black)
+	<-blackDone
+	if len(off) > 0 {
+		vdisplay.RestoreColors()
 	}
 	if err := vdisplay.TurnOn(off, scope); err != nil {
 		fmt.Fprintln(os.Stderr, "helper: turning screens back on:", err)

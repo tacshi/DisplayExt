@@ -109,6 +109,11 @@ language and see whether a UU远程 session is connected.
   holds a power assertion named `UURemote Disable Display Sleep`; DisplayExt
   looks for it every two seconds and waits five seconds after it goes before
   unmounting, so a brief reconnect leaves the display alone.
+- **Other screens.** Rather than switching them off, DisplayExt mirrors the
+  Mac's own screens to the virtual display and sets them to black. A screen
+  that disappears ends any screen recording tied to it, and UU远程 records the
+  Mac's sound through the screen it connected on; on a mirrored screen, that
+  sound keeps playing on the iPad.
 
 ## Good to know
 

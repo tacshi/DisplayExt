@@ -1,6 +1,7 @@
 package vdisplay
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -25,20 +26,20 @@ var (
 	onWait  = 5 * time.Second
 )
 
-func TurnOff(ids []uint32) (Scope, error) {
+func TurnOff(ids []uint32, master uint32) (Scope, error) {
 	if len(ids) == 0 {
 		return ScopeApp, nil
 	}
-	if !slices.ContainsFunc(ActiveDisplays(), func(id uint32) bool { return !slices.Contains(ids, id) }) {
-		return ScopeApp, fmt.Errorf("no other screen would be left on")
+	if !slices.Contains(ActiveDisplays(), master) {
+		return ScopeApp, fmt.Errorf("display %d is not on", master)
 	}
 	for _, scope := range []Scope{ScopeApp, ScopeSession} {
-		if err := setEnabled(ids, false, scope); err != nil {
+		if err := setMirror(ids, master, scope); err != nil {
 			_ = TurnOn(ids, ScopeSession)
 			return scope, err
 		}
 		if waitFor(ids, false, offWait) {
-			if len(ActiveDisplays()) == 0 {
+			if !slices.Contains(ActiveDisplays(), master) {
 				_ = TurnOn(ids, ScopeSession)
 				return scope, fmt.Errorf("no screen was left on")
 			}
@@ -53,8 +54,11 @@ func TurnOn(ids []uint32, scope Scope) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	err := setEnabled(ids, true, scope)
-	if !waitFor(ids, true, onWait) && err == nil {
+	err := errors.Join(setMirror(ids, noDisplay, scope), setEnabled(ids, true, scope))
+	if waitFor(ids, true, onWait) {
+		return nil
+	}
+	if err == nil {
 		err = fmt.Errorf("screens %v did not come back within %s", ids, onWait)
 	}
 	return err
@@ -79,3 +83,26 @@ func waitFor(ids []uint32, on bool, timeout time.Duration) bool {
 		time.Sleep(50 * time.Millisecond)
 	}
 }
+
+func KeepBlack(ids []uint32, every time.Duration, done <-chan struct{}) {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		var lit []uint32
+		for _, id := range ids {
+			if !isBlack(id) {
+				lit = append(lit, id)
+			}
+		}
+		if len(lit) > 0 {
+			_ = Blackout(lit)
+		}
+		select {
+		case <-done:
+			return
+		case <-t.C:
+		}
+	}
+}
+
+const noDisplay = 0

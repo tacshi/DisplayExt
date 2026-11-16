@@ -68,8 +68,7 @@ func main() {
 	screens := flag.Bool("screens", false, "test turning the other screens off and back on")
 	turnOn := flag.String("turn-on", "", "turn these screens on (JSON)")
 	alone := flag.Bool("screens-alone", false, "test what macOS does when a crash leaves no screen on")
-	offChild := flag.String("screens-child", "", "internal: turn these screens off (JSON), then crash")
-	aloneChild := flag.String("screens-alone-child", "", "internal: mount a display, turn these screens off (JSON), then crash")
+	offChild := flag.String("screens-child", "", "internal: mount a display, turn these screens off (JSON), then crash")
 	flag.Parse()
 
 	switch {
@@ -88,9 +87,7 @@ func main() {
 	case *alone:
 		os.Exit(onAppLoop(runAlone))
 	case *offChild != "":
-		os.Exit(runOffChild(*offChild, false))
-	case *aloneChild != "":
-		os.Exit(runOffChild(*aloneChild, true))
+		os.Exit(runOffChild(*offChild))
 	case *list:
 		for _, id := range vdisplay.ActiveDisplays() {
 			fmt.Println(id)
@@ -273,26 +270,27 @@ func onAppLoop(f func() int) int {
 	return int(code.Load())
 }
 
-func runOffChild(arg string, mount bool) int {
+func runOffChild(arg string) int {
 	var ids []uint32
 	if err := json.Unmarshal([]byte(arg), &ids); err != nil {
 		fmt.Println("bad screen list:", err)
 		return 2
 	}
 	return onAppLoop(func() int {
-		if mount {
-			ipad, _ := specs()
-			d, err := vdisplay.Open(ipad)
-			if err != nil {
-				fmt.Println("  child: could not create the test display:", err)
-				return 1
-			}
-			fmt.Printf("  child: test display %d is up\n", d.ID())
+		_, small := specs()
+		d, err := vdisplay.Open(small)
+		if err != nil {
+			fmt.Println("  child: could not create the test display:", err)
+			return 1
 		}
-		scope, err := vdisplay.TurnOff(ids)
+		fmt.Printf("  child: test display %d is up\n", d.ID())
+		scope, err := vdisplay.TurnOff(ids, d.ID())
 		if err != nil {
 			fmt.Println("  child: could not turn them off:", err)
 			return 1
+		}
+		if err := vdisplay.Blackout(ids); err != nil {
+			fmt.Println("  child: could not black them out:", err)
 		}
 		fmt.Printf("  child: turned off %v %s; now crashing\n", ids, scope)
 		_ = syscall.Kill(os.Getpid(), syscall.SIGKILL)
@@ -330,15 +328,21 @@ func runScreens() int {
 
 	fmt.Println("\n[1/2] Turn off and back on, normally")
 	start := time.Now()
-	scope, err := vdisplay.TurnOff(ids)
+	scope, err := vdisplay.TurnOff(ids, d.ID())
 	switch {
 	case err != nil:
 		fmt.Println("  turning off failed:", err)
 		failed = true
 	default:
 		fmt.Printf("  off after %s, %s\n", time.Since(start).Round(100*time.Millisecond), scope)
+		for _, id := range ids {
+			fmt.Printf("  screen %d mirrors %d\n", id, vdisplay.MirrorMaster(id))
+		}
 		fmt.Printf("  active now: %v\n", vdisplay.ActiveDisplays())
-		time.Sleep(4 * time.Second)
+		done := make(chan struct{})
+		time.AfterFunc(4*time.Second, func() { close(done) })
+		vdisplay.KeepBlack(ids, 500*time.Millisecond, done)
+		vdisplay.RestoreColors()
 		start = time.Now()
 		if err := vdisplay.TurnOn(ids, scope); err != nil {
 			fmt.Println("  turning back on failed:", err)
@@ -352,7 +356,7 @@ func runScreens() int {
 	}
 	time.Sleep(2 * time.Second)
 
-	fmt.Println("\n[2/2] A process turns them off and is killed")
+	fmt.Println("\n[2/2] A process mounts its own display, turns them off and is killed")
 	exe, _ := os.Executable()
 	arg, _ := json.Marshal(ids)
 	cmd := exec.Command(exe, "-screens-child", string(arg))
@@ -388,7 +392,7 @@ func runAlone() int {
 	fmt.Println("A child mounts a test display, turns these off and is killed, leaving no screen on.")
 	exe, _ := os.Executable()
 	arg, _ := json.Marshal(ids)
-	cmd := exec.Command(exe, "-screens-alone-child", string(arg))
+	cmd := exec.Command(exe, "-screens-child", string(arg))
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	_ = cmd.Run()
 	start := time.Now()

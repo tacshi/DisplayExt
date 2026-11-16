@@ -42,20 +42,25 @@ var (
 	classGetInstanceMethod func(cls, sel uintptr) uintptr
 	cgGetActiveDisplayList func(max uint32, ids *uint32, n *uint32) int32
 
-	cgDisplayCopyAllDisplayModes func(id uint32, options objc.ID) objc.ID
-	cgDisplayCopyDisplayMode     func(id uint32) uintptr
-	cgDisplayModeRelease         func(mode uintptr)
-	cgDisplayModeGetWidth        func(mode uintptr) uint64
-	cgDisplayModeGetHeight       func(mode uintptr) uint64
-	cgDisplayModeGetPixelWidth   func(mode uintptr) uint64
-	cgDisplayModeGetPixelHeight  func(mode uintptr) uint64
-	cgDisplayModeGetRefreshRate  func(mode uintptr) float64
-	cgDisplayVendorNumber        func(id uint32) uint32
-	cgBeginDisplayConfiguration  func(config *uintptr) int32
-	cgConfigureDisplayWithMode   func(config uintptr, id uint32, mode uintptr, options uintptr) int32
-	cgCompleteDisplayConfig      func(config uintptr, option uint32) int32
-	cgCancelDisplayConfiguration func(config uintptr) int32
-	cgsConfigureDisplayEnabled   func(config uintptr, id uint32, enabled bool) int32
+	cgDisplayCopyAllDisplayModes  func(id uint32, options objc.ID) objc.ID
+	cgDisplayCopyDisplayMode      func(id uint32) uintptr
+	cgDisplayModeRelease          func(mode uintptr)
+	cgDisplayModeGetWidth         func(mode uintptr) uint64
+	cgDisplayModeGetHeight        func(mode uintptr) uint64
+	cgDisplayModeGetPixelWidth    func(mode uintptr) uint64
+	cgDisplayModeGetPixelHeight   func(mode uintptr) uint64
+	cgDisplayModeGetRefreshRate   func(mode uintptr) float64
+	cgDisplayVendorNumber         func(id uint32) uint32
+	cgBeginDisplayConfiguration   func(config *uintptr) int32
+	cgConfigureDisplayWithMode    func(config uintptr, id uint32, mode uintptr, options uintptr) int32
+	cgCompleteDisplayConfig       func(config uintptr, option uint32) int32
+	cgCancelDisplayConfiguration  func(config uintptr) int32
+	cgsConfigureDisplayEnabled    func(config uintptr, id uint32, enabled bool) int32
+	cgConfigureDisplayMirror      func(config uintptr, id uint32, master uint32) int32
+	cgDisplayMirrorsDisplay       func(id uint32) uint32
+	cgSetDisplayTransferByFormula func(id uint32, rMin, rMax, rGamma, gMin, gMax, gGamma, bMin, bMax, bGamma float32) int32
+	cgDisplayRestoreColorSync     func()
+	cgGetDisplayTransferByTable   func(id uint32, capacity uint32, r, g, b *float32, n *uint32) int32
 )
 
 const (
@@ -105,6 +110,11 @@ func load() error {
 		purego.RegisterLibFunc(&cgConfigureDisplayWithMode, cg, "CGConfigureDisplayWithDisplayMode")
 		purego.RegisterLibFunc(&cgCompleteDisplayConfig, cg, "CGCompleteDisplayConfiguration")
 		purego.RegisterLibFunc(&cgCancelDisplayConfiguration, cg, "CGCancelDisplayConfiguration")
+		purego.RegisterLibFunc(&cgConfigureDisplayMirror, cg, "CGConfigureDisplayMirrorOfDisplay")
+		purego.RegisterLibFunc(&cgDisplayMirrorsDisplay, cg, "CGDisplayMirrorsDisplay")
+		purego.RegisterLibFunc(&cgSetDisplayTransferByFormula, cg, "CGSetDisplayTransferByFormula")
+		purego.RegisterLibFunc(&cgDisplayRestoreColorSync, cg, "CGDisplayRestoreColorSyncSettings")
+		purego.RegisterLibFunc(&cgGetDisplayTransferByTable, cg, "CGGetDisplayTransferByTable")
 		if _, err := purego.Dlsym(cg, "CGSConfigureDisplayEnabled"); err == nil {
 			purego.RegisterLibFunc(&cgsConfigureDisplayEnabled, cg, "CGSConfigureDisplayEnabled")
 		}
@@ -259,6 +269,70 @@ func setEnabled(ids []uint32, on bool, scope Scope) error {
 		return fmt.Errorf("CGCompleteDisplayConfiguration: CGError %d", e)
 	}
 	return nil
+}
+
+func setMirror(ids []uint32, master uint32, scope Scope) error {
+	if err := load(); err != nil {
+		return err
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	var cfg uintptr
+	if e := cgBeginDisplayConfiguration(&cfg); e != 0 {
+		return fmt.Errorf("CGBeginDisplayConfiguration: CGError %d", e)
+	}
+	for _, id := range ids {
+		if e := cgConfigureDisplayMirror(cfg, id, master); e != 0 {
+			cgCancelDisplayConfiguration(cfg)
+			return fmt.Errorf("CGConfigureDisplayMirrorOfDisplay(%d, %d): CGError %d", id, master, e)
+		}
+	}
+	opt := uint32(cgConfigureForSession)
+	if scope == ScopeApp {
+		opt = cgConfigureForAppOnly
+	}
+	if e := cgCompleteDisplayConfig(cfg, opt); e != 0 {
+		return fmt.Errorf("CGCompleteDisplayConfiguration: CGError %d", e)
+	}
+	return nil
+}
+
+func MirrorMaster(id uint32) uint32 {
+	if load() != nil {
+		return 0
+	}
+	return cgDisplayMirrorsDisplay(id)
+}
+
+func Blackout(ids []uint32) error {
+	if err := load(); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if e := cgSetDisplayTransferByFormula(id, 0, 0, 1, 0, 0, 1, 0, 0, 1); e != 0 {
+			return fmt.Errorf("CGSetDisplayTransferByFormula(%d): CGError %d", id, e)
+		}
+	}
+	return nil
+}
+
+func isBlack(id uint32) bool {
+	if load() != nil {
+		return false
+	}
+	var r, g, b [256]float32
+	var n uint32
+	if cgGetDisplayTransferByTable(id, uint32(len(r)), &r[0], &g[0], &b[0], &n) != 0 || n == 0 {
+		return false
+	}
+	return r[n-1] == 0 && g[n-1] == 0 && b[n-1] == 0
+}
+
+func RestoreColors() {
+	if load() == nil {
+		cgDisplayRestoreColorSync()
+	}
 }
 
 func SetMode(id uint32, m Mode) error {

@@ -36,3 +36,7 @@ func CurrentMode(uint32) (Mode, bool) { return Mode{}, false }
 func OtherModes() map[uint32]Mode { return nil }
 
 func SetMode(uint32, Mode) error { return errUnsupported }
+
+func OtherDisplays() []uint32 { return nil }
+
+func setEnabled([]uint32, bool, Scope) error { return errUnsupported }

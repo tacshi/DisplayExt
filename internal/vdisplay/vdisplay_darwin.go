@@ -55,9 +55,14 @@ var (
 	cgConfigureDisplayWithMode   func(config uintptr, id uint32, mode uintptr, options uintptr) int32
 	cgCompleteDisplayConfig      func(config uintptr, option uint32) int32
 	cgCancelDisplayConfiguration func(config uintptr) int32
+	cgsConfigureDisplayEnabled   func(config uintptr, id uint32, enabled bool) int32
 )
 
-const cgConfigurePermanently = 2
+const (
+	cgConfigureForAppOnly  = 0
+	cgConfigureForSession  = 1
+	cgConfigurePermanently = 2
+)
 
 func load() error {
 	loadOnce.Do(func() {
@@ -100,6 +105,9 @@ func load() error {
 		purego.RegisterLibFunc(&cgConfigureDisplayWithMode, cg, "CGConfigureDisplayWithDisplayMode")
 		purego.RegisterLibFunc(&cgCompleteDisplayConfig, cg, "CGCompleteDisplayConfiguration")
 		purego.RegisterLibFunc(&cgCancelDisplayConfiguration, cg, "CGCancelDisplayConfiguration")
+		if _, err := purego.Dlsym(cg, "CGSConfigureDisplayEnabled"); err == nil {
+			purego.RegisterLibFunc(&cgsConfigureDisplayEnabled, cg, "CGSConfigureDisplayEnabled")
+		}
 	})
 	return loadErr
 }
@@ -205,15 +213,52 @@ func CurrentMode(id uint32) (Mode, bool) {
 
 func OtherModes() map[uint32]Mode {
 	out := map[uint32]Mode{}
-	for _, id := range ActiveDisplays() {
-		if cgDisplayVendorNumber(id) == VendorID {
-			continue
-		}
+	for _, id := range OtherDisplays() {
 		if m, ok := CurrentMode(id); ok {
 			out[id] = m
 		}
 	}
 	return out
+}
+
+func OtherDisplays() []uint32 {
+	var out []uint32
+	for _, id := range ActiveDisplays() {
+		if cgDisplayVendorNumber(id) != VendorID {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+func setEnabled(ids []uint32, on bool, scope Scope) error {
+	if err := load(); err != nil {
+		return err
+	}
+	if cgsConfigureDisplayEnabled == nil {
+		return fmt.Errorf("vdisplay: this macOS cannot turn screens off")
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	var cfg uintptr
+	if e := cgBeginDisplayConfiguration(&cfg); e != 0 {
+		return fmt.Errorf("CGBeginDisplayConfiguration: CGError %d", e)
+	}
+	for _, id := range ids {
+		if e := cgsConfigureDisplayEnabled(cfg, id, on); e != 0 {
+			cgCancelDisplayConfiguration(cfg)
+			return fmt.Errorf("CGSConfigureDisplayEnabled(%d, %t): CGError %d", id, on, e)
+		}
+	}
+	opt := uint32(cgConfigureForSession)
+	if scope == ScopeApp {
+		opt = cgConfigureForAppOnly
+	}
+	if e := cgCompleteDisplayConfig(cfg, opt); e != 0 {
+		return fmt.Errorf("CGCompleteDisplayConfiguration: CGError %d", e)
+	}
+	return nil
 }
 
 func SetMode(id uint32, m Mode) error {

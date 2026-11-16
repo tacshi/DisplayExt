@@ -40,6 +40,9 @@ DisplayExt does just this one job, and does it from the menu bar.
 - **Any refresh rate** from 1 to 240 Hz, with presets up to 144 Hz.
 - **Mounts with UU远程.** A display can follow UU远程 sessions: it is mounted
   as a session connects, and unmounted a few seconds after it ends.
+- **Turns off your other screens, if you like.** While a display is mounted,
+  the Mac's own screens can go dark and their windows move to it. They come
+  back on when it unmounts, even if DisplayExt quits unexpectedly.
 - **Lives in the menu bar.** Mount and unmount from the menu; the icon fills
   in while a display is mounted. No Dock icon.
 - **Opens at login**, speaks English and Simplified Chinese, and follows

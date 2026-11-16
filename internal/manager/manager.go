@@ -6,7 +6,12 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -33,44 +38,58 @@ type Status struct {
 	Err string
 
 	ModeErr string
+
+	ScreensErr string
 }
 
 type Manager struct {
 	exe      string
 	stderr   io.Writer
+	state    string
 	onChange func(id string)
 
 	modes   func() map[uint32]vdisplay.Mode
 	setMode func(id uint32, m vdisplay.Mode) error
+	others  func() []uint32
+	active  func() []uint32
+	turnOn  func(ids []uint32) error
 
 	mu      sync.Mutex
 	status  map[string]Status
 	running map[string]*helper
 	failed  map[string]string
+	off     map[string][]uint32
 	pending []config.Display
 	dirty   bool
 	wake    chan struct{}
 }
 
 type helper struct {
-	spec  string
-	cmd   *exec.Cmd
-	stdin io.WriteCloser
-	done  chan struct{}
+	spec   string
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
+	done   chan struct{}
+	off    []uint32
+	before map[uint32]vdisplay.Mode
 
 	stopping bool
 }
 
-func New(exe string, stderr io.Writer, onChange func(id string)) *Manager {
+func New(exe string, stderr io.Writer, state string, onChange func(id string)) *Manager {
 	m := &Manager{
 		exe:      exe,
 		stderr:   stderr,
+		state:    state,
 		onChange: onChange,
 		modes:    vdisplay.OtherModes,
 		setMode:  vdisplay.SetMode,
+		others:   vdisplay.OtherDisplays,
+		active:   vdisplay.ActiveDisplays,
+		turnOn:   turnOnForSession,
 		status:   map[string]Status{},
 		running:  map[string]*helper{},
 		failed:   map[string]string{},
+		off:      map[string][]uint32{},
 		wake:     make(chan struct{}, 1),
 	}
 	go m.loop()
@@ -107,6 +126,9 @@ func (m *Manager) StopAll() {
 		return
 	}
 	before := m.snapshot()
+	for _, h := range hs {
+		before = withEarlier(before, h.before)
+	}
 	var wg sync.WaitGroup
 	for _, h := range hs {
 		wg.Go(func() { stop(h) })
@@ -134,7 +156,9 @@ func (m *Manager) loop() {
 func (m *Manager) reconcile(want []config.Display) {
 	wanted := make(map[string]bool, len(want))
 	specs := make(map[string]string, len(want))
+	screensOff := make(map[string]bool, len(want))
 	for _, d := range want {
+		screensOff[d.ID] = d.ScreensOff
 		wanted[d.ID] = true
 		b, err := json.Marshal(vdisplay.FromConfig(d))
 		if err != nil {
@@ -180,7 +204,7 @@ func (m *Manager) reconcile(want []config.Display) {
 		failed := m.failed[d.ID] == spec
 		m.mu.Unlock()
 		if !up && !failed {
-			m.start(d.ID, spec)
+			m.start(d.ID, spec, screensOff[d.ID])
 		}
 	}
 }
@@ -199,7 +223,7 @@ func (m *Manager) stopOne(id string) {
 	m.mu.Unlock()
 	m.notify(id)
 
-	before := m.snapshot()
+	before := withEarlier(m.snapshot(), h.before)
 	stop(h)
 	log.Printf("display %s: unmounted", id)
 	m.keep(before)
@@ -224,12 +248,27 @@ func stop(h *helper) {
 	<-h.done
 }
 
-func (m *Manager) start(id, spec string) {
+func (m *Manager) start(id, spec string, screensOff bool) {
 	m.set(id, Status{Busy: true})
 
 	log.Printf("display %s: starting helper", id)
 	before := m.snapshot()
-	cmd := exec.Command(m.exe, host.Flag, spec)
+	args := []string{host.Flag, spec}
+	var off []uint32
+	if screensOff && m.others != nil {
+		off = m.others()
+	}
+	if len(off) > 0 {
+		b, err := json.Marshal(off)
+		if err != nil {
+			m.fail(id, spec, err.Error())
+			return
+		}
+		args = append(args, string(b))
+		m.markOff(id, off)
+		log.Printf("display %s: will turn off screens %v", id, off)
+	}
+	cmd := exec.Command(m.exe, args...)
 	cmd.Stderr = m.stderr
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -242,10 +281,11 @@ func (m *Manager) start(id, spec string) {
 		return
 	}
 	if err := cmd.Start(); err != nil {
+		m.restore(id, off)
 		m.fail(id, spec, err.Error())
 		return
 	}
-	h := &helper{spec: spec, cmd: cmd, stdin: stdin, done: make(chan struct{})}
+	h := &helper{spec: spec, cmd: cmd, stdin: stdin, done: make(chan struct{}), off: off, before: before}
 
 	lines := make(chan string, 1)
 	go func() {
@@ -256,6 +296,7 @@ func (m *Manager) start(id, spec string) {
 		close(lines)
 		_, _ = io.Copy(io.Discard, stdout)
 		_ = cmd.Wait()
+		m.restore(id, h.off)
 		close(h.done)
 	}()
 
@@ -285,10 +326,16 @@ func (m *Manager) start(id, spec string) {
 	if ready.ModeError != "" {
 		log.Printf("display %s: mode not applied: %s", id, ready.ModeError)
 	}
+	switch {
+	case ready.ScreensError != "":
+		log.Printf("display %s: screens not turned off: %s", id, ready.ScreensError)
+	case len(ready.ScreensOff) > 0:
+		log.Printf("display %s: turned off screens %v", id, ready.ScreensOff)
+	}
 
 	m.mu.Lock()
 	m.running[id] = h
-	m.status[id] = Status{Mounted: true, DisplayID: ready.DisplayID, ModeErr: ready.ModeError}
+	m.status[id] = Status{Mounted: true, DisplayID: ready.DisplayID, ModeErr: ready.ModeError, ScreensErr: ready.ScreensError}
 	m.mu.Unlock()
 	m.notify(id)
 	m.keep(before)
@@ -306,6 +353,9 @@ func (m *Manager) start(id, spec string) {
 		m.failed[id] = h.spec
 		m.mu.Unlock()
 		m.notify(id)
+		if len(h.off) > 0 {
+			m.keep(h.before)
+		}
 	}()
 }
 
@@ -359,4 +409,146 @@ func (m *Manager) keep(before map[uint32]vdisplay.Mode) {
 		}
 		time.Sleep(settlePoll)
 	}
+}
+
+func withEarlier(now, earlier map[uint32]vdisplay.Mode) map[uint32]vdisplay.Mode {
+	if len(earlier) == 0 {
+		return now
+	}
+	out := maps.Clone(earlier)
+	maps.Copy(out, now)
+	return out
+}
+
+func turnOnForSession(ids []uint32) error { return vdisplay.TurnOn(ids, vdisplay.ScopeSession) }
+
+func (m *Manager) markOff(id string, ids []uint32) {
+	m.mu.Lock()
+	m.off[id] = ids
+	all := m.allOff()
+	m.mu.Unlock()
+	m.writeState(all)
+}
+
+func (m *Manager) restore(id string, ids []uint32) {
+	if len(ids) == 0 {
+		return
+	}
+	if m.active != nil && m.turnOn != nil {
+		active := m.active()
+		var dark []uint32
+		for _, s := range ids {
+			if !slices.Contains(active, s) {
+				dark = append(dark, s)
+			}
+		}
+		if len(dark) > 0 {
+			log.Printf("display %s: turning screens %v back on", id, dark)
+			if err := m.turnOn(dark); err != nil {
+				log.Printf("display %s: %v", id, err)
+			}
+		}
+	}
+	m.mu.Lock()
+	delete(m.off, id)
+	all := m.allOff()
+	m.mu.Unlock()
+	m.writeState(all)
+}
+
+func (m *Manager) allOff() []uint32 {
+	var all []uint32
+	for _, ids := range m.off {
+		all = append(all, ids...)
+	}
+	slices.Sort(all)
+	return slices.Compact(all)
+}
+
+func (m *Manager) writeState(ids []uint32) {
+	if m.state == "" {
+		return
+	}
+	if len(ids) == 0 {
+		if err := os.Remove(m.state); err != nil && !os.IsNotExist(err) {
+			log.Printf("screens: %v", err)
+		}
+		return
+	}
+	b, err := json.Marshal(screensState{PID: os.Getpid(), Screens: ids})
+	if err == nil {
+		err = os.MkdirAll(filepath.Dir(m.state), 0o750)
+	}
+	if err == nil {
+		err = os.WriteFile(m.state, b, 0o600)
+	}
+	if err != nil {
+		log.Printf("screens: could not record screens turned off: %v", err)
+	}
+}
+
+const RestoreFlag = "--restore-screens"
+
+type screensState struct {
+	PID     int      `json:"pid"`
+	Screens []uint32 `json:"screens"`
+}
+
+func Recover(state string) { recoverWith(state, 0, vdisplay.ActiveDisplays, turnOnForSession) }
+
+const watchScript = `while kill -0 "$0" 2>/dev/null; do sleep 1; done; exec "$1" ` + RestoreFlag + ` "$2" "$0" "$3"`
+
+func Watch(exe, state, logPath string) error {
+	cmd := exec.Command("/bin/sh", "-c", watchScript, strconv.Itoa(os.Getpid()), exe, state, logPath)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	return cmd.Process.Release()
+}
+
+func RunRestore(args []string) int {
+	if len(args) != 3 {
+		return 2
+	}
+	owner, err := strconv.Atoi(args[1])
+	if err != nil || owner <= 0 {
+		return 2
+	}
+	if _, err := os.Stat(args[0]); err != nil {
+		return 0
+	}
+	if f, err := os.OpenFile(filepath.Clean(args[2]), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
+		defer func() { _ = f.Close() }()
+		log.SetOutput(f)
+	}
+	recoverWith(args[0], owner, vdisplay.ActiveDisplays, turnOnForSession)
+	return 0
+}
+
+func recoverWith(state string, owner int, activeNow func() []uint32, turnOn func([]uint32) error) {
+	b, err := os.ReadFile(filepath.Clean(state))
+	if err != nil {
+		return
+	}
+	var st screensState
+	if err := json.Unmarshal(b, &st); err == nil {
+		if owner != 0 && st.PID != owner {
+			return
+		}
+		active := activeNow()
+		var dark []uint32
+		for _, id := range st.Screens {
+			if !slices.Contains(active, id) {
+				dark = append(dark, id)
+			}
+		}
+		if len(dark) > 0 {
+			log.Printf("screens %v were left off by DisplayExt (pid %d); turning them back on", dark, st.PID)
+			if err := turnOn(dark); err != nil {
+				log.Printf("screens: %v", err)
+			}
+		}
+	}
+	_ = os.Remove(state)
 }

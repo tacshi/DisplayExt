@@ -1,10 +1,14 @@
 package manager
 
 import (
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -16,13 +20,18 @@ import (
 )
 
 const (
-	fakeEnv   = "DISPLAYEXT_FAKE_HELPER"
-	startsEnv = "DISPLAYEXT_FAKE_STARTS"
+	fakeEnv    = "DISPLAYEXT_FAKE_HELPER"
+	startsEnv  = "DISPLAYEXT_FAKE_STARTS"
+	restoreEnv = "DISPLAYEXT_FAKE_RESTORE"
 )
 
 func TestMain(m *testing.M) {
 	if len(os.Args) > 1 && os.Args[1] == host.Flag {
 		os.Exit(fakeHelper())
+	}
+	if len(os.Args) > 1 && os.Args[1] == RestoreFlag {
+		_ = os.WriteFile(filepath.Clean(os.Getenv(restoreEnv)), []byte(strings.Join(os.Args[1:], " ")), 0o600)
+		os.Exit(0)
 	}
 	os.Exit(m.Run())
 }
@@ -30,7 +39,7 @@ func TestMain(m *testing.M) {
 func fakeHelper() int {
 	if path := os.Getenv(startsEnv); path != "" {
 		if f, err := os.OpenFile(filepath.Clean(path), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
-			_, _ = fmt.Fprintln(f, "start")
+			_, _ = fmt.Fprintln(f, "start", strings.Join(os.Args[3:], " "))
 			_ = f.Close()
 		}
 	}
@@ -56,8 +65,9 @@ func newManager(t *testing.T, mode string) *Manager {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := New(exe, io.Discard, nil)
+	m := New(exe, io.Discard, filepath.Join(t.TempDir(), "screens-off.json"), nil)
 	m.modes, m.setMode = nil, nil
+	m.others, m.active, m.turnOn = nil, nil, nil
 	t.Cleanup(m.StopAll)
 	return m
 }
@@ -285,4 +295,206 @@ func TestOtherScreensKeepTheirMode(t *testing.T) {
 	mu.Unlock()
 	m.Sync(nil)
 	waitFor(t, "restored after unmount", func() bool { c, n := state(); return n == 2 && c.Same(sharp) })
+}
+
+type fakeScreens struct {
+	mu     sync.Mutex
+	dark   bool
+	turned [][]uint32
+}
+
+func (f *fakeScreens) install(m *Manager) {
+	m.others = func() []uint32 { return []uint32{7, 9} }
+	m.active = func() []uint32 {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		if f.dark {
+			return []uint32{42}
+		}
+		return []uint32{7, 9, 42}
+	}
+	m.turnOn = func(ids []uint32) error {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		f.turned = append(f.turned, ids)
+		f.dark = false
+		return nil
+	}
+}
+
+func (f *fakeScreens) calls() [][]uint32 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.turned)
+}
+
+func stateIDs(t *testing.T, m *Manager) []uint32 {
+	t.Helper()
+	b, err := os.ReadFile(m.state)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	var st screensState
+	if err := json.Unmarshal(b, &st); err != nil {
+		t.Fatal(err)
+	}
+	if st.PID != os.Getpid() {
+		t.Errorf("state file names pid %d, want %d", st.PID, os.Getpid())
+	}
+	return st.Screens
+}
+
+func TestScreensOffPassedAndRecorded(t *testing.T) {
+	starts := filepath.Join(t.TempDir(), "starts")
+	t.Setenv(startsEnv, starts)
+	m := newManager(t, "ok")
+	f := &fakeScreens{}
+	f.install(m)
+	d := config.Default().Displays[0]
+	d.ScreensOff = true
+
+	m.Sync([]config.Display{d})
+	waitFor(t, "mount", func() bool { return m.Status(d.ID).Mounted })
+	b, _ := os.ReadFile(filepath.Clean(starts))
+	if !strings.Contains(string(b), "[7,9]") {
+		t.Errorf("helper was started with %q, want the screens [7,9]", b)
+	}
+	if got := stateIDs(t, m); !slices.Equal(got, []uint32{7, 9}) {
+		t.Errorf("state file holds %v while mounted", got)
+	}
+
+	m.Sync(nil)
+	waitFor(t, "unmount", func() bool { return running(m) == 0 && idle(m) })
+	if got := stateIDs(t, m); got != nil {
+		t.Errorf("state file still holds %v after unmount", got)
+	}
+	if c := f.calls(); len(c) != 0 {
+		t.Errorf("screens the helper had turned back on were turned on again: %v", c)
+	}
+}
+
+func TestScreensOffNotAskedFor(t *testing.T) {
+	starts := filepath.Join(t.TempDir(), "starts")
+	t.Setenv(startsEnv, starts)
+	m := newManager(t, "ok")
+	(&fakeScreens{}).install(m)
+	d := config.Default().Displays[0]
+
+	m.Sync([]config.Display{d})
+	waitFor(t, "mount", func() bool { return m.Status(d.ID).Mounted })
+	b, _ := os.ReadFile(filepath.Clean(starts))
+	if strings.Contains(string(b), "[") {
+		t.Errorf("helper was given screens to turn off: %q", b)
+	}
+	if got := stateIDs(t, m); got != nil {
+		t.Errorf("state file holds %v", got)
+	}
+}
+
+func TestScreensBackOnWhenHelperDies(t *testing.T) {
+	m := newManager(t, "die")
+	f := &fakeScreens{dark: true}
+	f.install(m)
+	d := config.Default().Displays[0]
+	d.ScreensOff = true
+
+	m.Sync([]config.Display{d})
+	waitFor(t, "death reported", func() bool { return strings.Contains(m.Status(d.ID).Err, "unexpectedly") })
+	if c := f.calls(); len(c) != 1 || !slices.Equal(c[0], []uint32{7, 9}) {
+		t.Errorf("turned on %v, want [[7 9]]", c)
+	}
+	if got := stateIDs(t, m); got != nil {
+		t.Errorf("state file still holds %v", got)
+	}
+}
+
+func TestScreensBackOnWhenHelperFails(t *testing.T) {
+	m := newManager(t, "fail")
+	f := &fakeScreens{dark: true}
+	f.install(m)
+	d := config.Default().Displays[0]
+	d.ScreensOff = true
+
+	m.Sync([]config.Display{d})
+	waitFor(t, "failure", func() bool { return m.Status(d.ID).Err != "" })
+	if c := f.calls(); len(c) != 1 {
+		t.Errorf("turned on %v, want one call", c)
+	}
+}
+
+func writeStateFile(t *testing.T, pid int, ids ...uint32) string {
+	t.Helper()
+	state := filepath.Join(t.TempDir(), "screens-off.json")
+	b, _ := json.Marshal(screensState{PID: pid, Screens: ids})
+	if err := os.WriteFile(state, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return state
+}
+
+func TestRecoverTurnsDarkScreensOn(t *testing.T) {
+	state := writeStateFile(t, 123, 3, 7, 9)
+	var got []uint32
+	recoverWith(state, 0, func() []uint32 { return []uint32{3, 42} }, func(ids []uint32) error { got = ids; return nil })
+	if !slices.Equal(got, []uint32{7, 9}) {
+		t.Errorf("turned on %v, want [7 9]", got)
+	}
+	if _, err := os.Stat(state); !os.IsNotExist(err) {
+		t.Error("state file kept after recovery")
+	}
+
+	called := false
+	recoverWith(state, 0, func() []uint32 { return nil }, func([]uint32) error { called = true; return nil })
+	if called {
+		t.Error("recovered without a state file")
+	}
+}
+
+func TestRestoreOnlyForItsOwner(t *testing.T) {
+	state := writeStateFile(t, 500, 7)
+	called := false
+	recoverWith(state, 400, func() []uint32 { return nil }, func([]uint32) error { called = true; return nil })
+	if called {
+		t.Error("a watcher restored screens another run turned off")
+	}
+	if _, err := os.Stat(state); err != nil {
+		t.Error("a watcher removed another run's state file")
+	}
+	recoverWith(state, 500, func() []uint32 { return nil }, func([]uint32) error { called = true; return nil })
+	if !called {
+		t.Error("the owner's watcher did not restore")
+	}
+}
+
+func TestWatcherRestoresAfterExit(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "ran")
+	t.Setenv(restoreEnv, marker)
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := exec.Command("/bin/sleep", "1")
+	if err := owner.Start(); err != nil {
+		t.Fatal(err)
+	}
+	watch := exec.Command("/bin/sh", "-c", watchScript, strconv.Itoa(owner.Process.Pid), exe, "STATE", "LOG")
+	if err := watch.Start(); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("watcher ran while its owner was alive")
+	}
+	_ = owner.Wait()
+	_ = watch.Wait()
+	b, err := os.ReadFile(filepath.Clean(marker))
+	if err != nil {
+		t.Fatal("watcher never ran the restore")
+	}
+	if want := RestoreFlag + " STATE " + strconv.Itoa(owner.Process.Pid) + " LOG"; string(b) != want {
+		t.Errorf("watcher ran %q, want %q", b, want)
+	}
 }

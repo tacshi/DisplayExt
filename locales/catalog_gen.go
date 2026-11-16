@@ -504,6 +504,26 @@ func (msgs Messages) HelpTriggerUU() string {
 	return Catalog.Format(msgs.locale, "helpTriggerUU", nil)
 }
 
+// FieldScreensOff says "Turn off other screens"
+// in the language the app shows.
+func FieldScreensOff() string { return In(i18n.Locale()).FieldScreensOff() }
+
+// FieldScreensOff says "Turn off other screens"
+// in the language of msgs.
+func (msgs Messages) FieldScreensOff() string {
+	return Catalog.Format(msgs.locale, "fieldScreensOff", nil)
+}
+
+// HelpScreensOff says "While mounted, this Mac's other screens are turned off and their windows move here. They come back on when it unmount…"
+// in the language the app shows.
+func HelpScreensOff() string { return In(i18n.Locale()).HelpScreensOff() }
+
+// HelpScreensOff says "While mounted, this Mac's other screens are turned off and their windows move here. They come back on when it unmount…"
+// in the language of msgs.
+func (msgs Messages) HelpScreensOff() string {
+	return Catalog.Format(msgs.locale, "helpScreensOff", nil)
+}
+
 // ButtonDelete says "Delete Display…"
 // in the language the app shows.
 func ButtonDelete() string { return In(i18n.Locale()).ButtonDelete() }
@@ -682,6 +702,16 @@ func ModeNotApplied(message string) string { return In(i18n.Locale()).ModeNotApp
 // in the language of msgs.
 func (msgs Messages) ModeNotApplied(message string) string {
 	return Catalog.Format(msgs.locale, "modeNotApplied", map[string]any{"message": message})
+}
+
+// ScreensNotOff says "Other screens not turned off: {message}"
+// in the language the app shows.
+func ScreensNotOff(message string) string { return In(i18n.Locale()).ScreensNotOff(message) }
+
+// ScreensNotOff says "Other screens not turned off: {message}"
+// in the language of msgs.
+func (msgs Messages) ScreensNotOff(message string) string {
+	return Catalog.Format(msgs.locale, "screensNotOff", map[string]any{"message": message})
 }
 
 // SectionStartup says "Startup"

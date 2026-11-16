@@ -49,6 +49,8 @@ type Display struct {
 	Serial    uint32  `json:"serial"`
 	Trigger   Trigger `json:"trigger"`
 
+	ScreensOff bool `json:"screensOff,omitzero"`
+
 	Mounted bool `json:"mounted,omitzero"`
 }
 

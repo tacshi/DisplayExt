@@ -395,6 +395,9 @@ func (s *Settings) displayPage(c *ui.Context, p palette) {
 		row(c, p, true, locales.FieldMount(), triggerHelp(triggers[s.trigger]), func() {
 			ui.Segmented(c.Key("trigger"), &s.trigger, locales.TriggerManual(), locales.TriggerUU()).Label(locales.LabelWhenToMount())
 		})
+		row(c, p, false, locales.FieldScreensOff(), locales.HelpScreensOff(), func() {
+			ui.Switch(c.Key("screensOff"), &s.draft.ScreensOff).Label(locales.FieldScreensOff())
+		})
 	})
 
 	if problem != "" {
@@ -448,6 +451,9 @@ func (s *Settings) hero(c *ui.Context, p palette, d config.Display) {
 		}
 		if st.ModeErr != "" {
 			ui.Text(c, locales.ModeNotApplied(st.ModeErr)).FontSize(12).TextColor(t.Warning)
+		}
+		if st.ScreensErr != "" {
+			ui.Text(c, locales.ScreensNotOff(st.ScreensErr)).FontSize(12).TextColor(t.Warning)
 		}
 	})
 }

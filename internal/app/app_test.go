@@ -29,7 +29,7 @@ func TestAppName(t *testing.T) {
 
 func testApp(t *testing.T, ds ...config.Display) *App {
 	t.Helper()
-	m := manager.New("", io.Discard, nil)
+	m := manager.New("", io.Discard, "", nil)
 	t.Cleanup(m.StopAll)
 	return &App{
 		cfgPath: filepath.Join(t.TempDir(), "config.json"),

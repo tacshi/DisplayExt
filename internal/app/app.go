@@ -73,7 +73,12 @@ func Run() error {
 	if err != nil {
 		return err
 	}
-	a.mgr = manager.New(exe, logw, func(string) { mygo.RunOnMain(a.changed) })
+	state := filepath.Join(filepath.Dir(a.cfgPath), "screens-off.json")
+	manager.Recover(state)
+	if err := manager.Watch(exe, state, LogPath(name)); err != nil {
+		log.Printf("screens: could not start the watcher: %v", err)
+	}
+	a.mgr = manager.New(exe, logw, state, func(string) { mygo.RunOnMain(a.changed) })
 
 	mygo.Use(native.New(updater.Options{DisableAutomaticChecks: true}))
 	mygo.App.OnSecondInstance(func([]string, string) { a.showSettings() })

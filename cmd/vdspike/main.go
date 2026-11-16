@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"displayext/internal/config"
@@ -64,9 +65,32 @@ func main() {
 	child := flag.String("child", "", "internal: run one variant (JSON)")
 	list := flag.Bool("list", false, "internal: print the active display IDs")
 	only := flag.Int("only", 0, "run only variant N (1-based)")
+	screens := flag.Bool("screens", false, "test turning the other screens off and back on")
+	turnOn := flag.String("turn-on", "", "turn these screens on (JSON)")
+	alone := flag.Bool("screens-alone", false, "test what macOS does when a crash leaves no screen on")
+	offChild := flag.String("screens-child", "", "internal: turn these screens off (JSON), then crash")
+	aloneChild := flag.String("screens-alone-child", "", "internal: mount a display, turn these screens off (JSON), then crash")
 	flag.Parse()
 
 	switch {
+	case *turnOn != "":
+		var ids []uint32
+		if err := json.Unmarshal([]byte(*turnOn), &ids); err != nil {
+			fmt.Println("bad screen list:", err)
+			os.Exit(2)
+		}
+		if err := vdisplay.TurnOn(ids, vdisplay.ScopeSession); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+	case *screens:
+		os.Exit(onAppLoop(runScreens))
+	case *alone:
+		os.Exit(onAppLoop(runAlone))
+	case *offChild != "":
+		os.Exit(runOffChild(*offChild, false))
+	case *aloneChild != "":
+		os.Exit(runOffChild(*aloneChild, true))
 	case *list:
 		for _, id := range vdisplay.ActiveDisplays() {
 			fmt.Println(id)
@@ -234,4 +258,153 @@ func runOne(exe string, v variant) bool {
 		}
 	}
 	return external
+}
+
+func onAppLoop(f func() int) int {
+	objc.App()
+	var done atomic.Bool
+	var code atomic.Int32
+	go func() {
+		runtime.LockOSThread()
+		code.Store(int32(f()))
+		done.Store(true)
+	}()
+	objc.RunAppLoop(1, done.Load)
+	return int(code.Load())
+}
+
+func runOffChild(arg string, mount bool) int {
+	var ids []uint32
+	if err := json.Unmarshal([]byte(arg), &ids); err != nil {
+		fmt.Println("bad screen list:", err)
+		return 2
+	}
+	return onAppLoop(func() int {
+		if mount {
+			ipad, _ := specs()
+			d, err := vdisplay.Open(ipad)
+			if err != nil {
+				fmt.Println("  child: could not create the test display:", err)
+				return 1
+			}
+			fmt.Printf("  child: test display %d is up\n", d.ID())
+		}
+		scope, err := vdisplay.TurnOff(ids)
+		if err != nil {
+			fmt.Println("  child: could not turn them off:", err)
+			return 1
+		}
+		fmt.Printf("  child: turned off %v %s; now crashing\n", ids, scope)
+		_ = syscall.Kill(os.Getpid(), syscall.SIGKILL)
+		return 0
+	})
+}
+
+func screensOn(ids []uint32) bool {
+	active := vdisplay.ActiveDisplays()
+	for _, id := range ids {
+		if !slices.Contains(active, id) {
+			return false
+		}
+	}
+	return true
+}
+
+func runScreens() int {
+	fmt.Printf("Screens-off test — %s\n", time.Now().Format(time.DateTime))
+	ids := vdisplay.OtherDisplays()
+	if len(ids) == 0 {
+		fmt.Println("No other screens are on.")
+		return 1
+	}
+	fmt.Printf("Other screens: %v\n", ids)
+	ipad, _ := specs()
+	d, err := vdisplay.Open(ipad)
+	if err != nil {
+		fmt.Println("Could not create the test display:", err)
+		return 1
+	}
+	defer func() { _ = d.Close() }()
+	fmt.Printf("Test display %d is up; it stays up for the whole test.\n", d.ID())
+	failed := false
+
+	fmt.Println("\n[1/2] Turn off and back on, normally")
+	start := time.Now()
+	scope, err := vdisplay.TurnOff(ids)
+	switch {
+	case err != nil:
+		fmt.Println("  turning off failed:", err)
+		failed = true
+	default:
+		fmt.Printf("  off after %s, %s\n", time.Since(start).Round(100*time.Millisecond), scope)
+		fmt.Printf("  active now: %v\n", vdisplay.ActiveDisplays())
+		time.Sleep(4 * time.Second)
+		start = time.Now()
+		if err := vdisplay.TurnOn(ids, scope); err != nil {
+			fmt.Println("  turning back on failed:", err)
+			failed = true
+		} else {
+			fmt.Printf("  back on after %s\n", time.Since(start).Round(100*time.Millisecond))
+		}
+	}
+	if !screensOn(ids) {
+		_ = vdisplay.TurnOn(ids, vdisplay.ScopeSession)
+	}
+	time.Sleep(2 * time.Second)
+
+	fmt.Println("\n[2/2] A process turns them off and is killed")
+	exe, _ := os.Executable()
+	arg, _ := json.Marshal(ids)
+	cmd := exec.Command(exe, "-screens-child", string(arg))
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	_ = cmd.Run()
+	start = time.Now()
+	for time.Since(start) < 6*time.Second && !screensOn(ids) {
+		time.Sleep(100 * time.Millisecond)
+	}
+	if screensOn(ids) {
+		fmt.Printf("  => macOS turned them back on by itself after %s\n", time.Since(start).Round(100*time.Millisecond))
+	} else {
+		fmt.Println("  => macOS left them off; turning them back on")
+		if err := vdisplay.TurnOn(ids, vdisplay.ScopeSession); err != nil {
+			fmt.Println("  turning back on failed:", err)
+		}
+	}
+	fmt.Printf("\nActive at the end: %v\n", vdisplay.ActiveDisplays())
+	if failed {
+		return 1
+	}
+	return 0
+}
+
+func runAlone() int {
+	fmt.Printf("No-screen-left test — %s\n", time.Now().Format(time.DateTime))
+	ids := vdisplay.OtherDisplays()
+	if all := vdisplay.ActiveDisplays(); len(ids) == 0 || len(all) != len(ids) {
+		fmt.Printf("Active screens %v include virtual ones %v. Quit DisplayExt and try again.\n", all, ids)
+		return 1
+	}
+	fmt.Printf("Screens: %v\n", ids)
+	fmt.Println("A child mounts a test display, turns these off and is killed, leaving no screen on.")
+	exe, _ := os.Executable()
+	arg, _ := json.Marshal(ids)
+	cmd := exec.Command(exe, "-screens-alone-child", string(arg))
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	_ = cmd.Run()
+	start := time.Now()
+	for time.Since(start) < 8*time.Second && !screensOn(ids) {
+		time.Sleep(100 * time.Millisecond)
+	}
+	code := 0
+	if screensOn(ids) {
+		fmt.Printf("  => macOS turned them back on by itself after %s\n", time.Since(start).Round(100*time.Millisecond))
+	} else {
+		code = 1
+		fmt.Printf("  => macOS left no screen on for 8s (active: %v); turning them back on\n", vdisplay.ActiveDisplays())
+		if err := vdisplay.TurnOn(ids, vdisplay.ScopeSession); err != nil {
+			fmt.Println("  turning back on failed:", err)
+		}
+	}
+	fmt.Printf("Active at the end: %v\n", vdisplay.ActiveDisplays())
+	return code
 }

@@ -40,3 +40,13 @@ func SetMode(uint32, Mode) error { return errUnsupported }
 func OtherDisplays() []uint32 { return nil }
 
 func setEnabled([]uint32, bool, Scope) error { return errUnsupported }
+
+func setMirror([]uint32, uint32, Scope) error { return errUnsupported }
+
+func MirrorMaster(uint32) uint32 { return 0 }
+
+func Blackout([]uint32) error { return errUnsupported }
+
+func RestoreColors() {}
+
+func isBlack(uint32) bool { return false }

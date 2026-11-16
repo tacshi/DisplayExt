@@ -184,6 +184,7 @@ func (a *App) wanted() []config.Display {
 	var want []config.Display
 	for _, d := range a.cfg.Displays {
 		if d.Check() == config.NoProblem && a.sw.Want(d) {
+			d.ScreensOff = d.ScreensOff && a.sw.Connected()
 			want = append(want, d)
 		}
 	}

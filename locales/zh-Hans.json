@@ -53,7 +53,7 @@
   "helpTriggerManual": "从菜单栏手动挂载和卸载。",
   "helpTriggerUU": "UU远程 会话连接时挂载，会话结束几秒后卸载。",
   "fieldScreensOff": "关闭其他屏幕",
-  "helpScreensOff": "挂载期间关闭这台 Mac 的其他屏幕，窗口会移到这个显示器上。卸载时屏幕会重新打开，DisplayExt 意外退出时也会。",
+  "helpScreensOff": "UU远程 会话连接期间，这台 Mac 的其他屏幕会变黑，窗口会移到这个显示器上。会话结束或显示器卸载时屏幕会恢复，DisplayExt 意外退出时也会。",
 
   "buttonDelete": "删除显示器…",
   "noteRemount": "保存后会重新挂载显示器",

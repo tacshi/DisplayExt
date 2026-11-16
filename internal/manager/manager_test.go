@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"bufio"
 	"encoding/json/v2"
 	"fmt"
 	"io"
@@ -36,30 +37,51 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func fakeHelper() int {
+func record(what string) {
 	if path := os.Getenv(startsEnv); path != "" {
 		if f, err := os.OpenFile(filepath.Clean(path), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
-			_, _ = fmt.Fprintln(f, "start", strings.Join(os.Args[3:], " "))
+			_, _ = fmt.Fprintln(f, what)
 			_ = f.Close()
 		}
 	}
-	switch os.Getenv(fakeEnv) {
+}
+
+func fakeHelper() int {
+	record("start " + strings.Join(os.Args[3:], " "))
+	mode := os.Getenv(fakeEnv)
+	if len(os.Args) > 3 {
+		fmt.Printf(`{"displayID":42,"screensOff":%s}`+"\n", os.Args[3])
+	} else if mode != "fail" {
+		fmt.Println(`{"displayID":42}`)
+	}
+	switch mode {
 	case "fail":
 		fmt.Println(`{"error":"nope"}`)
 		return 1
-	case "left-off":
-		fmt.Println(`{"displayID":42}`)
-		_, _ = io.Copy(io.Discard, os.Stdin)
-		return 1
 	case "die":
-		fmt.Println(`{"displayID":42}`)
 		time.Sleep(200 * time.Millisecond)
 		return 3
-	default:
-		fmt.Println(`{"displayID":42}`)
-		_, _ = io.Copy(io.Discard, os.Stdin)
-		return 0
 	}
+	in := bufio.NewScanner(os.Stdin)
+	for in.Scan() {
+		var c host.Command
+		if json.Unmarshal(in.Bytes(), &c) != nil {
+			continue
+		}
+		b, _ := json.Marshal(c.ScreensOff)
+		record("screens " + string(b))
+		switch {
+		case mode == "screens-fail" && len(c.ScreensOff) > 0:
+			fmt.Println(`{"screensError":"nope"}`)
+		default:
+			r, _ := json.Marshal(host.Ready{ScreensOff: c.ScreensOff})
+			fmt.Println(string(r))
+		}
+	}
+	if mode == "left-off" {
+		return 1
+	}
+	return 0
 }
 
 func newManager(t *testing.T, mode string) *Manager {
@@ -489,6 +511,92 @@ func TestScreensBackOnWhenHelperFails(t *testing.T) {
 	waitFor(t, "failure", func() bool { return m.Status(d.ID).Err != "" })
 	if c := f.calls(); len(c) != 1 {
 		t.Errorf("turned on %v, want one call", c)
+	}
+}
+
+func current(m *Manager, id string) *helper {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.running[id]
+}
+
+func TestScreensFollowTheSession(t *testing.T) {
+	starts := filepath.Join(t.TempDir(), "starts")
+	t.Setenv(startsEnv, starts)
+	m := newManager(t, "ok")
+	f := &fakeScreens{}
+	f.install(m)
+	d := config.Default().Displays[0]
+
+	m.Sync([]config.Display{d})
+	waitFor(t, "mount", func() bool { return m.Status(d.ID).Mounted })
+	h := current(m, d.ID)
+
+	d.ScreensOff = true
+	m.Sync([]config.Display{d})
+	waitFor(t, "screens off", func() bool { return idle(m) && slices.Equal(stateIDs(t, m), []uint32{7, 9}) })
+	waitFor(t, "helper told", func() bool {
+		b, _ := os.ReadFile(filepath.Clean(starts))
+		return strings.Contains(string(b), "screens [7,9]")
+	})
+
+	d.ScreensOff = false
+	m.Sync([]config.Display{d})
+	waitFor(t, "screens on", func() bool {
+		b, _ := os.ReadFile(filepath.Clean(starts))
+		return idle(m) && strings.Contains(string(b), "screens []") && stateIDs(t, m) == nil
+	})
+	if current(m, d.ID) != h {
+		t.Error("the display was remounted to change its screens")
+	}
+	if st := m.Status(d.ID); !st.Mounted || st.ScreensErr != "" {
+		t.Errorf("status %+v", st)
+	}
+	if c := f.calls(); len(c) != 0 {
+		t.Errorf("the app turned screens on itself: %v", c)
+	}
+}
+
+func TestScreensOffFailureReported(t *testing.T) {
+	m := newManager(t, "screens-fail")
+	f := &fakeScreens{}
+	f.install(m)
+	d := config.Default().Displays[0]
+	m.Sync([]config.Display{d})
+	waitFor(t, "mount", func() bool { return m.Status(d.ID).Mounted })
+
+	d.ScreensOff = true
+	m.Sync([]config.Display{d})
+	waitFor(t, "error reported", func() bool { return m.Status(d.ID).ScreensErr == "nope" })
+	if got := stateIDs(t, m); got != nil {
+		t.Errorf("state file holds %v after the helper failed", got)
+	}
+	m.mu.Lock()
+	dark := len(m.running[d.ID].off) > 0
+	m.mu.Unlock()
+	if dark {
+		t.Error("screens counted as off after the helper failed")
+	}
+}
+
+func TestScreensRestoredWhenHelperDiesWhileOff(t *testing.T) {
+	m := newManager(t, "ok")
+	f := &fakeScreens{}
+	f.install(m)
+	d := config.Default().Displays[0]
+	m.Sync([]config.Display{d})
+	waitFor(t, "mount", func() bool { return m.Status(d.ID).Mounted })
+	d.ScreensOff = true
+	m.Sync([]config.Display{d})
+	waitFor(t, "screens off", func() bool { return idle(m) && slices.Equal(stateIDs(t, m), []uint32{7, 9}) })
+
+	f.mu.Lock()
+	f.dark = true
+	f.mu.Unlock()
+	_ = current(m, d.ID).cmd.Process.Kill()
+	waitFor(t, "death reported", func() bool { return strings.Contains(m.Status(d.ID).Err, "unexpectedly") })
+	if c := f.calls(); len(c) != 1 || !slices.Equal(c[0], []uint32{7, 9}) {
+		t.Errorf("turned on %v, want [[7 9]]", c)
 	}
 }
 

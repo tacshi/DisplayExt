@@ -514,11 +514,11 @@ func (msgs Messages) FieldScreensOff() string {
 	return Catalog.Format(msgs.locale, "fieldScreensOff", nil)
 }
 
-// HelpScreensOff says "While mounted, this Mac's other screens are turned off and their windows move here. They come back on when it unmount…"
+// HelpScreensOff says "While a UU远程 session is connected, this Mac's other screens go dark and their windows move here. They come back w…"
 // in the language the app shows.
 func HelpScreensOff() string { return In(i18n.Locale()).HelpScreensOff() }
 
-// HelpScreensOff says "While mounted, this Mac's other screens are turned off and their windows move here. They come back on when it unmount…"
+// HelpScreensOff says "While a UU远程 session is connected, this Mac's other screens go dark and their windows move here. They come back w…"
 // in the language of msgs.
 func (msgs Messages) HelpScreensOff() string {
 	return Catalog.Format(msgs.locale, "helpScreensOff", nil)

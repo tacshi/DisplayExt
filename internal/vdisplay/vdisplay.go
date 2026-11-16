@@ -29,8 +29,6 @@ type Spec struct {
 	Extra     []config.Size `json:"extra"`
 	SizeMMW   float64       `json:"sizeMMW"`
 	SizeMMH   float64       `json:"sizeMMH"`
-
-	ScreensOff bool `json:"screensOff,omitzero"`
 }
 
 func FromConfig(d config.Display) Spec {
@@ -47,8 +45,6 @@ func FromConfig(d config.Display) Spec {
 		Extra:     d.ExtraModes(),
 		SizeMMW:   float64(d.Width) * 25.4 / pointsPerInch,
 		SizeMMH:   float64(d.Height) * 25.4 / pointsPerInch,
-
-		ScreensOff: d.ScreensOff,
 	}
 }
 

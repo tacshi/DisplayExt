@@ -3,6 +3,7 @@ package manager
 import (
 	"bufio"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -65,12 +66,13 @@ type Manager struct {
 }
 
 type helper struct {
-	spec   string
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
-	done   chan struct{}
-	off    []uint32
-	before map[uint32]vdisplay.Mode
+	spec    string
+	cmd     *exec.Cmd
+	stdin   io.WriteCloser
+	replies chan string
+	done    chan struct{}
+	off     []uint32
+	before  map[uint32]vdisplay.Mode
 
 	stopping bool
 }
@@ -200,12 +202,112 @@ func (m *Manager) reconcile(want []config.Display) {
 			continue
 		}
 		m.mu.Lock()
-		_, up := m.running[d.ID]
+		h, up := m.running[d.ID]
 		failed := m.failed[d.ID] == spec
+		dark := up && len(h.off) > 0
 		m.mu.Unlock()
-		if !up && !failed {
+		switch {
+		case !up && !failed:
 			m.start(d.ID, spec, screensOff[d.ID])
+		case up && screensOff[d.ID] && !dark:
+			m.screensOff(d.ID, h)
+		case up && !screensOff[d.ID] && dark:
+			m.screensOn(d.ID, h)
 		}
+	}
+}
+
+func (m *Manager) screensOff(id string, h *helper) {
+	if m.others == nil {
+		return
+	}
+	off := m.others()
+	if len(off) == 0 {
+		return
+	}
+	m.markOff(id, off)
+	log.Printf("display %s: will turn off screens %v", id, off)
+	r, err := m.ask(h, off)
+	if err == nil && r.ScreensError != "" {
+		err = errors.New(r.ScreensError)
+	}
+	if err != nil {
+		log.Printf("display %s: screens not turned off: %v", id, err)
+		m.restore(id, off)
+		m.setScreensErr(id, err.Error())
+		return
+	}
+	m.mu.Lock()
+	h.off = r.ScreensOff
+	m.mu.Unlock()
+	log.Printf("display %s: turned off screens %v", id, r.ScreensOff)
+	m.setScreensErr(id, "")
+}
+
+func (m *Manager) screensOn(id string, h *helper) {
+	m.mu.Lock()
+	off := h.off
+	m.mu.Unlock()
+	before := withEarlier(m.snapshot(), h.before)
+	r, err := m.ask(h, nil)
+	m.mu.Lock()
+	h.off = nil
+	m.mu.Unlock()
+	if err == nil && r.ScreensError != "" {
+		err = errors.New(r.ScreensError)
+	}
+	if err != nil {
+		log.Printf("display %s: the helper could not turn screens back on: %v", id, err)
+		m.restore(id, off)
+	} else {
+		log.Printf("display %s: turned screens %v back on", id, off)
+		m.forget(id)
+	}
+	m.keep(before)
+	m.setScreensErr(id, "")
+}
+
+func (m *Manager) ask(h *helper, off []uint32) (host.Ready, error) {
+	var r host.Ready
+	b, err := json.Marshal(host.Command{ScreensOff: off})
+	if err != nil {
+		return r, err
+	}
+	for drained := false; !drained; {
+		select {
+		case _, ok := <-h.replies:
+			drained = !ok
+		default:
+			drained = true
+		}
+	}
+	if _, err := fmt.Fprintf(h.stdin, "%s\n", b); err != nil {
+		return r, err
+	}
+	select {
+	case line, ok := <-h.replies:
+		if !ok {
+			return r, errors.New("the helper exited")
+		}
+		if err := json.Unmarshal([]byte(line), &r); err != nil {
+			return r, fmt.Errorf("helper said %q: %w", strings.TrimSpace(line), err)
+		}
+		return r, nil
+	case <-time.After(readyTimeout):
+		return r, fmt.Errorf("the helper did not answer within %s", readyTimeout)
+	}
+}
+
+func (m *Manager) setScreensErr(id, msg string) {
+	m.mu.Lock()
+	st, ok := m.status[id]
+	if ok {
+		st.ScreensErr = msg
+		m.status[id] = st
+	}
+	m.mu.Unlock()
+	if ok {
+		m.notify(id)
 	}
 }
 
@@ -285,7 +387,7 @@ func (m *Manager) start(id, spec string, screensOff bool) {
 		m.fail(id, spec, err.Error())
 		return
 	}
-	h := &helper{spec: spec, cmd: cmd, stdin: stdin, done: make(chan struct{}), off: off, before: before}
+	h := &helper{spec: spec, cmd: cmd, stdin: stdin, replies: make(chan string, 1), done: make(chan struct{}), off: off, before: before}
 
 	lines := make(chan string, 1)
 	go func() {
@@ -294,11 +396,22 @@ func (m *Manager) start(id, spec string, screensOff bool) {
 			lines <- sc.Text()
 		}
 		close(lines)
+		for sc.Scan() {
+			select {
+			case h.replies <- sc.Text():
+			default:
+			}
+		}
 		_, _ = io.Copy(io.Discard, stdout)
-		if cmd.Wait() == nil {
+		close(h.replies)
+		clean := cmd.Wait() == nil
+		m.mu.Lock()
+		left := m.off[id]
+		m.mu.Unlock()
+		if clean {
 			m.forget(id)
 		} else {
-			m.restore(id, h.off)
+			m.restore(id, left)
 		}
 		close(h.done)
 	}()
@@ -337,9 +450,13 @@ func (m *Manager) start(id, spec string, screensOff bool) {
 	}
 
 	m.mu.Lock()
+	h.off = ready.ScreensOff
 	m.running[id] = h
 	m.status[id] = Status{Mounted: true, DisplayID: ready.DisplayID, ModeErr: ready.ModeError, ScreensErr: ready.ScreensError}
 	m.mu.Unlock()
+	if len(off) > 0 && len(ready.ScreensOff) == 0 {
+		m.restore(id, off)
+	}
 	m.notify(id)
 	m.keep(before)
 

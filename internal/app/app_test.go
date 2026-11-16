@@ -72,6 +72,34 @@ func TestWantedSkipsInvalidDisplays(t *testing.T) {
 	}
 }
 
+func TestScreensOffOnlyWhileConnected(t *testing.T) {
+	manual := config.NewDisplay("Manual", config.Presets[0])
+	manual.Mounted, manual.ScreensOff = true, true
+	uu := config.NewDisplay("UU", config.Presets[0])
+	uu.Trigger, uu.ScreensOff = config.TriggerUU, true
+	a := testApp(t, manual, uu)
+	a.sw.Toggle(uu, true)
+
+	for _, d := range a.wanted() {
+		if d.ScreensOff {
+			t.Errorf("%s turns screens off with no UU远程 session", d.Name)
+		}
+	}
+	a.sw.SetConnected(true)
+	want := a.wanted()
+	if len(want) != 2 {
+		t.Fatalf("wanted %d displays while connected, want 2", len(want))
+	}
+	for _, d := range want {
+		if !d.ScreensOff {
+			t.Errorf("%s keeps screens on during a UU远程 session", d.Name)
+		}
+	}
+	if !a.cfg.Displays[0].ScreensOff {
+		t.Error("the saved setting was changed")
+	}
+}
+
 func TestLoadConfigSetsDamagedFileAside(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	a := &App{name: "DisplayExt Test"}

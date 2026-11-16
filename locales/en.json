@@ -53,7 +53,7 @@
   "helpTriggerManual": "Mounted and unmounted from the menu bar.",
   "helpTriggerUU": "Mounted while a UU远程 session is connected, unmounted a few seconds after it ends.",
   "fieldScreensOff": "Turn off other screens",
-  "helpScreensOff": "While mounted, this Mac's other screens are turned off and their windows move here. They come back on when it unmounts, even if DisplayExt quits unexpectedly.",
+  "helpScreensOff": "While a UU远程 session is connected, this Mac's other screens go dark and their windows move here. They come back when the session ends or the display unmounts, even if DisplayExt quits unexpectedly.",
 
   "buttonDelete": "Delete Display…",
   "noteRemount": "Saving remounts the display",

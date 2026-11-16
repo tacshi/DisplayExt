@@ -1,6 +1,7 @@
 package host
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json/v2"
 	"fmt"
@@ -22,6 +23,10 @@ const Flag = "--display-host"
 const StrategyEnv = "DISPLAYEXT_HOST_STRATEGY"
 
 const blackCheck = 500 * time.Millisecond
+
+type Command struct {
+	ScreensOff []uint32 `json:"screensOff"`
+}
 
 type Ready struct {
 	DisplayID uint32 `json:"displayID,omitzero"`
@@ -75,52 +80,100 @@ func serve(spec vdisplay.Spec, off []uint32, stdin io.Reader, stdout io.Writer) 
 	if d.ModeErr != nil {
 		r.ModeError = d.ModeErr.Error()
 	}
-	var scope vdisplay.Scope
-	if len(off) > 0 {
-		if scope, err = vdisplay.TurnOff(off, d.ID()); err != nil {
-			r.ScreensError = err.Error()
-			off = nil
-		} else {
-			r.ScreensOff = off
-			fmt.Fprintf(os.Stderr, "helper: turned off screens %v %s\n", off, scope)
-			if err := vdisplay.Blackout(off); err != nil {
-				fmt.Fprintln(os.Stderr, "helper: blacking out screens:", err)
-			}
-		}
-	}
+	sc := &screens{master: d.ID()}
+	sc.apply(off, &r)
 	report(stdout, r)
 
-	black, blackDone := make(chan struct{}), make(chan struct{})
+	cmds := make(chan Command)
 	go func() {
-		defer close(blackDone)
-		if len(off) > 0 {
-			vdisplay.KeepBlack(off, blackCheck, black)
+		defer close(cmds)
+		in := bufio.NewScanner(stdin)
+		for in.Scan() {
+			var c Command
+			if json.Unmarshal(in.Bytes(), &c) == nil {
+				cmds <- c
+			}
 		}
-	}()
-
-	stop := make(chan struct{}, 2)
-	go func() {
-		_, _ = io.Copy(io.Discard, stdin)
-		stop <- struct{}{}
 	}()
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
-	select {
-	case <-stop:
-	case <-sig:
+	for running := true; running; {
+		select {
+		case c, ok := <-cmds:
+			if !ok {
+				running = false
+				break
+			}
+			var r Ready
+			sc.apply(c.ScreensOff, &r)
+			report(stdout, r)
+		case <-sig:
+			running = false
+		}
 	}
-	close(black)
-	<-blackDone
-	if len(off) > 0 {
-		vdisplay.RestoreColors()
-	}
-	if err := vdisplay.TurnOn(off, scope); err != nil {
+	err = sc.turnOn()
+	_ = d.Close()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "helper: turning screens back on:", err)
-		_ = d.Close()
 		return 1
 	}
-	_ = d.Close()
 	return 0
+}
+
+type screens struct {
+	master uint32
+	off    []uint32
+	scope  vdisplay.Scope
+	black  chan struct{}
+	done   chan struct{}
+}
+
+func (s *screens) apply(off []uint32, r *Ready) {
+	if len(off) == 0 {
+		if err := s.turnOn(); err != nil {
+			r.ScreensError = err.Error()
+		}
+		return
+	}
+	if len(s.off) == 0 {
+		if err := s.turnOff(off); err != nil {
+			r.ScreensError = err.Error()
+		}
+	}
+	r.ScreensOff = s.off
+}
+
+func (s *screens) turnOff(ids []uint32) error {
+	scope, err := vdisplay.TurnOff(ids, s.master)
+	if err != nil {
+		return err
+	}
+	s.off, s.scope = ids, scope
+	fmt.Fprintf(os.Stderr, "helper: turned off screens %v %s\n", ids, scope)
+	if err := vdisplay.Blackout(ids); err != nil {
+		fmt.Fprintln(os.Stderr, "helper: blacking out screens:", err)
+	}
+	s.black, s.done = make(chan struct{}), make(chan struct{})
+	go func(black, done chan struct{}) {
+		defer close(done)
+		vdisplay.KeepBlack(ids, blackCheck, black)
+	}(s.black, s.done)
+	return nil
+}
+
+func (s *screens) turnOn() error {
+	if len(s.off) == 0 {
+		return nil
+	}
+	close(s.black)
+	<-s.done
+	vdisplay.RestoreColors()
+	err := vdisplay.TurnOn(s.off, s.scope)
+	if err == nil {
+		fmt.Fprintf(os.Stderr, "helper: turned screens %v back on\n", s.off)
+	}
+	s.off = nil
+	return err
 }
 
 func report(w io.Writer, r Ready) {

@@ -40,9 +40,11 @@ DisplayExt does just this one job, and does it from the menu bar.
 - **Any refresh rate** from 1 to 240 Hz, with presets up to 144 Hz.
 - **Mounts with UU远程.** A display can follow UU远程 sessions: it is mounted
   as a session connects, and unmounted a few seconds after it ends.
-- **Turns off your other screens, if you like.** While a display is mounted,
-  the Mac's own screens can go dark and their windows move to it. They come
-  back on when it unmounts, even if DisplayExt quits unexpectedly.
+- **Turns off your other screens during sessions, if you like.** While a
+  UU远程 session is connected and a display is mounted, the Mac's own screens
+  can go dark and their windows move to it. They come back when the session
+  ends, even if DisplayExt quits unexpectedly. A display mounted with no
+  session leaves them on, so you can still see what you are doing.
 - **Lives in the menu bar.** Mount and unmount from the menu; the icon fills
   in while a display is mounted. No Dock icon.
 - **Opens at login**, speaks English and Simplified Chinese, and follows
@@ -53,8 +55,9 @@ DisplayExt does just this one job, and does it from the menu bar.
 ## Requirements
 
 - macOS 13 or later. Tested on macOS 27 on Apple silicon.
-- UU远程 4.47 or later for mounting with sessions. With other remote apps,
-  mount displays from the menu.
+- UU远程 4.47 or later for mounting with sessions and turning other screens
+  off. With other remote apps, mount displays from the menu; the Mac's own
+  screens stay on.
 
 ## Install
 
@@ -113,7 +116,8 @@ language and see whether a UU远程 session is connected.
   Mac's own screens to the virtual display and sets them to black. A screen
   that disappears ends any screen recording tied to it, and UU远程 records the
   Mac's sound through the screen it connected on; on a mirrored screen, that
-  sound keeps playing on the iPad.
+  sound keeps playing on the iPad. The helper goes from mirrored to normal and
+  back as sessions come and go, without remounting the display.
 
 ## Good to know
 

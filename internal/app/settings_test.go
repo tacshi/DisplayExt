@@ -613,3 +613,17 @@ func TestConnectFromSaysWhenUUWindowIsClosed(t *testing.T) {
 		t.Errorf("missing %q: %q", want, tt.Texts())
 	}
 }
+
+func TestUnsavedChangesShowInTheFooter(t *testing.T) {
+	f := newFake()
+	s := NewSettings(f)
+	tt := newTester(s)
+	if tt.HasText("Unsaved changes") {
+		t.Error("a clean display says it has unsaved changes")
+	}
+	s.hz = 120
+	tt.Frame()
+	if !tt.HasText("Unsaved changes") {
+		t.Errorf("no unsaved-changes note: %q", tt.Texts())
+	}
+}

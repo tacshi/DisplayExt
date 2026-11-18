@@ -84,6 +84,7 @@
 
   "buttonDelete": "删除显示器…",
   "noteRemount": "重命名会重新挂载显示器",
+  "noteUnsaved": "有未保存的更改",
   "buttonRevert": "还原",
   "buttonSave": "保存",
   "deleteTitle": "删除“{name}”？",

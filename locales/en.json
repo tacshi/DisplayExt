@@ -84,6 +84,7 @@
 
   "buttonDelete": "Delete Display…",
   "noteRemount": "Renaming remounts the display",
+  "noteUnsaved": "Unsaved changes",
   "buttonRevert": "Revert",
   "buttonSave": "Save",
   "deleteTitle": "Delete “{name}”?",

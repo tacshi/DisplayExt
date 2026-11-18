@@ -436,6 +436,9 @@ func (s *Settings) View(c *ui.Context) {
 					}
 				})
 			})
+			if !s.general && s.sel != "" {
+				s.footer(c, p)
+			}
 		})
 	})
 	if ui.AlertDialog(c, &s.confirmDelete, locales.DeleteTitle(s.saved.Name), locales.DeleteMessage(),
@@ -527,7 +530,6 @@ func (s *Settings) emptyPage(c *ui.Context, p palette) {
 func (s *Settings) displayPage(c *ui.Context, p palette) {
 	t := c.Theme()
 	d := s.compose()
-	problem := problemText(d)
 
 	s.hero(c, p, d)
 
@@ -595,19 +597,32 @@ func (s *Settings) displayPage(c *ui.Context, p palette) {
 		})
 	})
 
-	if problem != "" {
-		ui.Text(c, problem).TextColor(t.Danger)
-	} else if s.saveErr != "" {
-		ui.Text(c, s.saveErr).TextColor(t.Danger)
-	}
-	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-		ui.Button(c, locales.ButtonDelete()).TextColor(t.Danger).OnClick(func() { s.confirmDelete = true })
-		ui.Spacer(c)
-		if s.dirty() && s.b.Status(s.sel).Mounted && s.needsRemount() {
-			ui.Text(c, locales.NoteRemount()).FontSize(11.5).TextColor(t.TextMuted)
-		}
-		ui.Button(c, locales.ButtonRevert()).Disabled(!s.dirty()).OnClick(func() { s.load(s.saved) })
-		ui.PrimaryButton(c, locales.ButtonSave()).Disabled(!s.dirty() || problem != "").OnClick(s.save)
+}
+
+func (s *Settings) footer(c *ui.Context, p palette) {
+	t := c.Theme()
+	problem := problemText(s.compose())
+	dirty := s.dirty()
+	ui.Column(c).Padding(12, 28, 14, 28).BorderWidth(1, 0, 0, 0).BorderColor(p.hairline).Background(p.page).Children(func() {
+		ui.Column(c).MaxWidth(640).Gap(6).Children(func() {
+			if problem != "" {
+				ui.Text(c, problem).TextColor(t.Danger)
+			} else if s.saveErr != "" {
+				ui.Text(c, s.saveErr).TextColor(t.Danger)
+			}
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Button(c, locales.ButtonDelete()).TextColor(t.Danger).OnClick(func() { s.confirmDelete = true })
+				ui.Spacer(c)
+				switch {
+				case dirty && s.b.Status(s.sel).Mounted && s.needsRemount():
+					ui.Text(c, locales.NoteRemount()).FontSize(11.5).TextColor(t.TextMuted)
+				case dirty:
+					ui.Text(c, locales.NoteUnsaved()).FontSize(11.5).TextColor(t.TextMuted)
+				}
+				ui.Button(c, locales.ButtonRevert()).Disabled(!dirty).OnClick(func() { s.load(s.saved) })
+				ui.PrimaryButton(c, locales.ButtonSave()).Disabled(!dirty || problem != "").OnClick(s.save)
+			})
+		})
 	})
 }
 

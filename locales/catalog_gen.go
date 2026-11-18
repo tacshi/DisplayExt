@@ -816,6 +816,16 @@ func (msgs Messages) NoteRemount() string {
 	return Catalog.Format(msgs.locale, "noteRemount", nil)
 }
 
+// NoteUnsaved says "Unsaved changes"
+// in the language the app shows.
+func NoteUnsaved() string { return In(i18n.Locale()).NoteUnsaved() }
+
+// NoteUnsaved says "Unsaved changes"
+// in the language of msgs.
+func (msgs Messages) NoteUnsaved() string {
+	return Catalog.Format(msgs.locale, "noteUnsaved", nil)
+}
+
 // ButtonRevert says "Revert"
 // in the language the app shows.
 func ButtonRevert() string { return In(i18n.Locale()).ButtonRevert() }

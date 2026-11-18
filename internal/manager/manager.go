@@ -171,10 +171,13 @@ func (m *Manager) reconcile(want []config.Display) {
 	}
 
 	m.mu.Lock()
-	var toStop, cleared []string
+	var toStop, toReshape, cleared []string
 	for id, h := range m.running {
-		if specs[id] != h.spec {
+		switch spec, ok := specs[id]; {
+		case !ok:
 			toStop = append(toStop, id)
+		case spec != h.spec:
+			toReshape = append(toReshape, id)
 		}
 	}
 	for id, spec := range m.failed {
@@ -194,6 +197,11 @@ func (m *Manager) reconcile(want []config.Display) {
 	}
 	for _, id := range toStop {
 		m.stopOne(id)
+	}
+	for _, id := range toReshape {
+		if !m.reshape(id, specs[id]) {
+			m.stopOne(id)
+		}
 	}
 
 	for _, d := range want {
@@ -227,7 +235,7 @@ func (m *Manager) screensOff(id string, h *helper) {
 	}
 	m.markOff(id, off)
 	log.Printf("display %s: will turn off screens %v", id, off)
-	r, err := m.ask(h, off)
+	r, err := m.ask(h, host.Command{ScreensOff: off})
 	if err == nil && r.ScreensError != "" {
 		err = errors.New(r.ScreensError)
 	}
@@ -249,7 +257,7 @@ func (m *Manager) screensOn(id string, h *helper) {
 	off := h.off
 	m.mu.Unlock()
 	before := withEarlier(m.snapshot(), h.before)
-	r, err := m.ask(h, nil)
+	r, err := m.ask(h, host.Command{})
 	m.mu.Lock()
 	h.off = nil
 	m.mu.Unlock()
@@ -267,9 +275,52 @@ func (m *Manager) screensOn(id string, h *helper) {
 	m.setScreensErr(id, "")
 }
 
-func (m *Manager) ask(h *helper, off []uint32) (host.Ready, error) {
+func (m *Manager) reshape(id, spec string) bool {
+	var next vdisplay.Spec
+	if err := json.Unmarshal([]byte(spec), &next); err != nil {
+		return false
+	}
+	m.mu.Lock()
+	h := m.running[id]
+	if h == nil {
+		m.mu.Unlock()
+		return false
+	}
+	st := m.status[id]
+	busy := st
+	busy.Busy = true
+	m.status[id] = busy
+	m.mu.Unlock()
+	m.notify(id)
+
+	before := withEarlier(m.snapshot(), h.before)
+	r, err := m.ask(h, host.Command{Spec: &next})
+	switch {
+	case err != nil:
+		log.Printf("display %s: could not change it in place: %v; remounting", id, err)
+	case r.Remount:
+		log.Printf("display %s: this change needs a remount", id)
+	case r.ModeError != "":
+		log.Printf("display %s: changing it in place failed: %s; remounting", id, r.ModeError)
+	}
+	if err != nil || r.Remount || r.ModeError != "" {
+		m.set(id, st)
+		return false
+	}
+	m.keep(before)
+	m.mu.Lock()
+	h.spec = spec
+	st.ModeErr = ""
+	m.status[id] = st
+	m.mu.Unlock()
+	log.Printf("display %s: changed in place to %d×%d", id, next.PointsW, next.PointsH)
+	m.notify(id)
+	return true
+}
+
+func (m *Manager) ask(h *helper, c host.Command) (host.Ready, error) {
 	var r host.Ready
-	b, err := json.Marshal(host.Command{ScreensOff: off})
+	b, err := json.Marshal(c)
 	if err != nil {
 		return r, err
 	}

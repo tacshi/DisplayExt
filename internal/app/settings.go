@@ -71,6 +71,7 @@ type Settings struct {
 	pickerOpen bool
 	query      string
 	reveal     bool
+	reselect   bool
 
 	login         bool
 	loginErr      string
@@ -357,8 +358,16 @@ func uniqueName(ds []config.Display, base, self string) string {
 	}
 }
 
+func (s *Settings) needsRemount() bool {
+	d := s.compose()
+	bw, bh := d.Box()
+	sw, sh := s.saved.Box()
+	return d.Name != s.saved.Name || d.Serial != s.saved.Serial || bw != sw || bh != sh
+}
+
 func (s *Settings) save() {
 	d := s.compose()
+	reshaped := d.AspectOf() != s.saved.AspectOf() && !s.needsRemount() && s.showingThis()
 	if d.Check() != config.NoProblem {
 		s.saveErr = problemText(d)
 		return
@@ -368,6 +377,7 @@ func (s *Settings) save() {
 		return
 	}
 	s.load(d)
+	s.reselect = reshaped
 }
 
 func (s *Settings) remove() {
@@ -567,7 +577,7 @@ func (s *Settings) displayPage(c *ui.Context, p palette) {
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		ui.Button(c, locales.ButtonDelete()).TextColor(t.Danger).OnClick(func() { s.confirmDelete = true })
 		ui.Spacer(c)
-		if s.dirty() && s.b.Status(s.sel).Mounted {
+		if s.dirty() && s.b.Status(s.sel).Mounted && s.needsRemount() {
 			ui.Text(c, locales.NoteRemount()).FontSize(11.5).TextColor(t.TextMuted)
 		}
 		ui.Button(c, locales.ButtonRevert()).Disabled(!s.dirty()).OnClick(func() { s.load(s.saved) })
@@ -599,6 +609,12 @@ func (s *Settings) hero(c *ui.Context, p palette, d config.Display) {
 					pill(c, locales.StatusNotMounted(), t.TextMuted)
 				}
 				ui.Text(c, s.summary()).FontSize(12).TextColor(t.TextMuted)
+				if s.reselect && !s.showingThis() {
+					s.reselect = false
+				}
+				if s.reselect {
+					ui.Text(c, locales.HintReselect()).FontSize(12).FontWeight(600).TextColor(t.Accent)
+				}
 				if s.needsSwitch() {
 					ui.Text(c, locales.HintChooseInUU(s.saved.Name)).FontSize(12).FontWeight(600).TextColor(t.Accent)
 				}

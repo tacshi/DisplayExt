@@ -20,10 +20,7 @@ func liveSpec(a config.Aspect, size config.Size, hidpi bool, hz int) vdisplay.Sp
 	if hidpi {
 		scale = 2
 	}
-	var extra []config.Size
-	for _, s := range a.Sizes(hidpi) {
-		extra = append(extra, config.Size{W: s.W * scale, H: s.H * scale})
-	}
+	extra := a.Sizes(hidpi)
 	return vdisplay.Spec{
 		Name:       "DisplayExt Live Test",
 		PointsW:    size.W,

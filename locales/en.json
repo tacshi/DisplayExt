@@ -72,7 +72,7 @@
   "helpScreensOff": "While a UU远程 session is connected, this Mac's other screens go dark and their windows move here. They come back when the session ends or the display unmounts, even if DisplayExt quits unexpectedly.",
 
   "buttonDelete": "Delete Display…",
-  "noteRemount": "Saving remounts the display",
+  "noteRemount": "Renaming remounts the display",
   "buttonRevert": "Revert",
   "buttonSave": "Save",
   "deleteTitle": "Delete “{name}”?",
@@ -90,6 +90,7 @@
   "summaryUUShowingThis": "Follows UU远程 · showing this display",
   "summaryUUShowingOther": "Follows UU远程 · showing {screen}",
   "hintChooseInUU": "To see this display, choose “{name}” in UU远程's screen switcher.",
+  "hintReselect": "UU远程 is still streaming the old shape. In UU远程, switch to another screen and back.",
   "buttonMount": "Mount",
   "buttonUnmount": "Unmount",
   "modeNotApplied": "Mode not applied: {message}",

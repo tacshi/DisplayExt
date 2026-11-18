@@ -92,21 +92,22 @@ func (a Aspect) DefaultSize() Size {
 
 func (d Display) AspectOf() Aspect { return Aspect{W: d.AspectW, H: d.AspectH} }
 
-func (d Display) ExtraModes() []Size {
-	maxW, maxH := d.PixelSize()
-	scale := 1
-	if d.HiDPI {
-		scale = 2
-	}
-	var out []Size
+const PixelBox = 6400
+
+func (d Display) Modes() []Size {
+	out := []Size{{W: d.Width, H: d.Height}}
 	for _, s := range d.AspectOf().Sizes(d.HiDPI) {
-		p := Size{s.W * scale, s.H * scale}
-		if p.W > maxW || p.H > maxH || (p.W == maxW && p.H == maxH) {
-			continue
+		if !slices.Contains(out, s) {
+			out = append(out, s)
 		}
-		out = append(out, p)
 	}
 	return out
+}
+
+func (d Display) Box() (w, h int) {
+	pw, ph := d.PixelSize()
+	side := max(PixelBox, pw, ph)
+	return side, side
 }
 
 func roundTo(v, step int) int { return (v + step/2) / step * step }

@@ -9,8 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"displayext/internal/config"
-
 	"github.com/ebitengine/purego"
 	"github.com/go-macos/objc"
 )
@@ -400,8 +398,7 @@ func create(s Spec, o Options) (*Display, error) {
 func newSettings(s Spec, o Options) objc.ID {
 	settings := objc.ClassID("CGVirtualDisplaySettings").Send(objc.Sel("alloc")).Send(objc.Sel("init"))
 	modes := objc.ClassID("NSMutableArray").Send(objc.Sel("array"))
-	sizes := append([]config.Size{{W: s.PixelsW, H: s.PixelsH}}, s.Extra...)
-	for _, m := range slices.Compact(sizes) {
+	for _, m := range s.Modes() {
 		alloc := objc.ClassID("CGVirtualDisplayMode").Send(objc.Sel("alloc"))
 		var mode objc.ID
 		if o.TransferFunction > 0 {

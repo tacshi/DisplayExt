@@ -116,6 +116,13 @@ language and see whether a UU远程 session is connected.
   ends that process, which always removes the display, even after macOS
   changed its mode; and if DisplayExt quits or crashes, its displays go with
   it.
+- **Changes in place.** Every display is created with room for 6400 × 6400
+  pixels and every size of its ratio registered in points, so macOS offers
+  each one in HiDPI. A new size, ratio, orientation, refresh rate or HiDPI
+  setting is applied to the mounted display in about a third of a second; it
+  keeps its number, and UU远程 keeps showing it. After a new ratio, UU远程
+  keeps streaming the old shape until you switch to another screen and back
+  in it, as Snug found. Only renaming remounts a display.
 - **UU远程 sessions.** macOS has no system-wide "remote session" state for
   third-party apps. While a session is connected, UU远程's `UURemoteServer`
   holds a power assertion named `UURemote Disable Display Sleep`; DisplayExt

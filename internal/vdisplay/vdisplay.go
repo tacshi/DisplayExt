@@ -3,6 +3,7 @@ package vdisplay
 import (
 	"fmt"
 	"math"
+	"slices"
 	"time"
 
 	"displayext/internal/config"
@@ -35,19 +36,42 @@ type Spec struct {
 
 func FromConfig(d config.Display) Spec {
 	pw, ph := d.PixelSize()
+	bw, bh := d.Box()
 	return Spec{
-		Name:      d.Name,
-		PointsW:   d.Width,
-		PointsH:   d.Height,
-		HiDPI:     d.HiDPI,
-		PixelsW:   pw,
-		PixelsH:   ph,
-		RefreshHz: d.RefreshHz,
-		Serial:    d.Serial,
-		Extra:     d.ExtraModes(),
-		SizeMMW:   float64(d.Width) * 25.4 / pointsPerInch,
-		SizeMMH:   float64(d.Height) * 25.4 / pointsPerInch,
+		Name:       d.Name,
+		PointsW:    d.Width,
+		PointsH:    d.Height,
+		HiDPI:      d.HiDPI,
+		PixelsW:    pw,
+		PixelsH:    ph,
+		MaxPixelsW: bw,
+		MaxPixelsH: bh,
+		RefreshHz:  d.RefreshHz,
+		Serial:     d.Serial,
+		Extra:      d.Modes(),
+		SizeMMW:    float64(d.Width) * 25.4 / pointsPerInch,
+		SizeMMH:    float64(d.Height) * 25.4 / pointsPerInch,
 	}
+}
+
+func (s Spec) Modes() []config.Size {
+	out := []config.Size{{W: s.PointsW, H: s.PointsH}}
+	for _, m := range s.Extra {
+		if !slices.Contains(out, m) {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+func (s Spec) Fits(box Spec) bool {
+	return s.Name == box.Name && s.Serial == box.Serial &&
+		s.MaxPixelsW == box.MaxPixelsW && s.MaxPixelsH == box.MaxPixelsH &&
+		s.PixelsW <= box.MaxPixelsW && s.PixelsH <= box.MaxPixelsH
+}
+
+func (s Spec) SameModes(o Spec) bool {
+	return s.HiDPI == o.HiDPI && s.RefreshHz == o.RefreshHz && slices.Equal(s.Modes(), o.Modes())
 }
 
 type Options struct {

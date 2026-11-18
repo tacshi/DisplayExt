@@ -62,10 +62,25 @@ func fakeHelper() int {
 		time.Sleep(200 * time.Millisecond)
 		return 3
 	}
+	var cur vdisplay.Spec
+	_ = json.Unmarshal([]byte(os.Args[2]), &cur)
 	in := bufio.NewScanner(os.Stdin)
 	for in.Scan() {
 		var c host.Command
 		if json.Unmarshal(in.Bytes(), &c) != nil {
+			continue
+		}
+		if c.Spec != nil {
+			record(fmt.Sprintf("reshape %d %dHz", c.Spec.PointsW, c.Spec.RefreshHz))
+			switch {
+			case !c.Spec.Fits(cur) || mode == "no-reshape":
+				fmt.Println(`{"displayID":42,"remount":true}`)
+			case mode == "reshape-fails":
+				fmt.Println(`{"displayID":42,"modeError":"no such mode"}`)
+			default:
+				cur = *c.Spec
+				fmt.Println(`{"displayID":42}`)
+			}
 			continue
 		}
 		b, _ := json.Marshal(c.ScreensOff)
@@ -141,39 +156,71 @@ func TestMountUnmount(t *testing.T) {
 	}
 }
 
-func TestRedefineRestarts(t *testing.T) {
+func helperOf(m *Manager, id string) *helper {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.running[id]
+}
+
+func TestRedefineChangesInPlace(t *testing.T) {
 	m := newManager(t, "ok")
 	d := config.Default().Displays[0]
 	m.Sync([]config.Display{d})
 	waitFor(t, "mount", func() bool { return m.Status(d.ID).Mounted })
-	m.mu.Lock()
-	first := m.running[d.ID]
-	m.mu.Unlock()
+	first := helperOf(m, d.ID)
 
 	d.RefreshHz = 144
+	d.Width, d.Height = 1024, 768
 	m.Sync([]config.Display{d})
-	waitFor(t, "restart", func() bool {
+	waitFor(t, "change in place", func() bool {
 		m.mu.Lock()
 		defer m.mu.Unlock()
 		h := m.running[d.ID]
-		return h != nil && h != first && strings.Contains(h.spec, `"refreshHz":144`)
+		return h == first && strings.Contains(h.spec, `"refreshHz":144`) && !m.status[d.ID].Busy
 	})
+	if st := m.Status(d.ID); !st.Mounted || st.DisplayID != 42 {
+		t.Errorf("status after changing in place: %+v", st)
+	}
 	select {
 	case <-first.done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("old helper still running after the redefinition")
+		t.Fatal("the helper exited on a change it could make in place")
+	default:
 	}
 
-	m.mu.Lock()
-	second := m.running[d.ID]
-	m.mu.Unlock()
 	m.Sync([]config.Display{d})
 	time.Sleep(200 * time.Millisecond)
-	m.mu.Lock()
-	same := m.running[d.ID] == second
-	m.mu.Unlock()
-	if !same {
+	if helperOf(m, d.ID) != first {
 		t.Error("an unchanged definition restarted the helper")
+	}
+}
+
+func TestRedefineRemountsWhenItMust(t *testing.T) {
+	for _, c := range []struct {
+		mode   string
+		change func(*config.Display)
+	}{
+		{"ok", func(d *config.Display) { d.Name = "Renamed" }},
+		{"no-reshape", func(d *config.Display) { d.RefreshHz = 144 }},
+		{"reshape-fails", func(d *config.Display) { d.RefreshHz = 144 }},
+	} {
+		t.Run(c.mode, func(t *testing.T) {
+			m := newManager(t, c.mode)
+			d := config.Default().Displays[0]
+			m.Sync([]config.Display{d})
+			waitFor(t, "mount", func() bool { return m.Status(d.ID).Mounted })
+			first := helperOf(m, d.ID)
+			c.change(&d)
+			m.Sync([]config.Display{d})
+			waitFor(t, "remount", func() bool {
+				h := helperOf(m, d.ID)
+				return h != nil && h != first && m.Status(d.ID).Mounted
+			})
+			select {
+			case <-first.done:
+			case <-time.After(5 * time.Second):
+				t.Fatal("old helper still running after the remount")
+			}
+		})
 	}
 }
 

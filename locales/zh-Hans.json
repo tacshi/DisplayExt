@@ -72,7 +72,7 @@
   "helpScreensOff": "UU远程 会话连接期间，这台 Mac 的其他屏幕会变黑，窗口会移到这个显示器上。会话结束或显示器卸载时屏幕会恢复，DisplayExt 意外退出时也会。",
 
   "buttonDelete": "删除显示器…",
-  "noteRemount": "保存后会重新挂载显示器",
+  "noteRemount": "重命名会重新挂载显示器",
   "buttonRevert": "还原",
   "buttonSave": "保存",
   "deleteTitle": "删除“{name}”？",
@@ -90,6 +90,7 @@
   "summaryUUShowingThis": "跟随 UU远程 · 正在显示此显示器",
   "summaryUUShowingOther": "跟随 UU远程 · 正在显示 {screen}",
   "hintChooseInUU": "要查看此显示器，请在 UU远程 的屏幕切换中选择“{name}”。",
+  "hintReselect": "UU远程 仍按原来的形状串流。请在 UU远程 中切换到其他屏幕再切回来。",
   "buttonMount": "挂载",
   "buttonUnmount": "卸载",
   "modeNotApplied": "未能应用显示模式：{message}",

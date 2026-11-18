@@ -494,3 +494,47 @@ func TestSummaryShowsWhichScreenUUShows(t *testing.T) {
 		t.Errorf("session row: %q", tt.Texts())
 	}
 }
+
+func TestRemountNoteOnlyForRenames(t *testing.T) {
+	f := newFake()
+	f.wanted[f.displays[0].ID] = true
+	s := NewSettings(f)
+	tt := newTester(s)
+	s.hz = 120
+	s.choosePreset(config.Aspect{W: 16, H: 10})
+	tt.Frame()
+	if tt.HasText("Renaming remounts the display") {
+		t.Error("the remount note shows for a change made in place")
+	}
+	s.draft.Name = "Studio"
+	tt.Frame()
+	if !tt.HasText("Renaming remounts the display") {
+		t.Errorf("no remount note for a rename: %q", tt.Texts())
+	}
+}
+
+func TestReselectHintAfterRatioChange(t *testing.T) {
+	f := newFake()
+	f.wanted[f.displays[0].ID] = true
+	f.uu = uudetect.Status{State: uudetect.Connected, Showing: 7}
+	f.screen = "iPad"
+	s := NewSettings(f)
+	tt := newTester(s)
+	s.choosePreset(config.Aspect{W: 16, H: 10})
+	tt.Frame()
+	if err := tt.Click("Save"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	hint := "UU远程 is still streaming the old shape. In UU远程, switch to another screen and back."
+	if !tt.HasText(hint) {
+		t.Fatalf("no re-select hint: %q", tt.Texts())
+	}
+	f.uu.Showing = 1
+	tt.Frame()
+	f.uu.Showing = 7
+	tt.Frame()
+	if tt.HasText(hint) {
+		t.Error("the hint stayed after switching away and back")
+	}
+}

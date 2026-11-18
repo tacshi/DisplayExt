@@ -54,23 +54,33 @@ func TestInvalidAspect(t *testing.T) {
 	}
 }
 
-func TestPixelSizeAndExtraModes(t *testing.T) {
+func TestPixelSizeAndModes(t *testing.T) {
 	d := Default().Displays[0]
 	if w, h := d.PixelSize(); w != 4096 || h != 3072 {
 		t.Fatalf("HiDPI iPad pixel size = %d×%d, want 4096×3072", w, h)
 	}
-	modes := d.ExtraModes()
-	if slices.Contains(modes, Size{4096, 3072}) {
-		t.Error("extra modes repeat the display's own size")
+	modes := d.Modes()
+	if len(modes) == 0 || modes[0] != (Size{2048, 1536}) {
+		t.Errorf("modes %v do not start with the display's own size in points", modes)
 	}
-	if !slices.Contains(modes, Size{2560, 1920}) {
-		t.Errorf("extra modes %v lack 1280×960 HiDPI", modes)
-	}
-	for _, m := range modes {
-		if m.W > 4096 || m.H > 3072 {
-			t.Errorf("extra mode %v exceeds the display", m)
+	for _, want := range []Size{{1024, 768}, {3200, 2400}} {
+		if !slices.Contains(modes, want) {
+			t.Errorf("modes %v lack %v", modes, want)
 		}
 	}
+	if w, h := d.Box(); w != PixelBox || h != PixelBox {
+		t.Errorf("box %d×%d", w, h)
+	}
+	for _, m := range modes {
+		if m.W*2 > PixelBox || m.H*2 > PixelBox {
+			t.Errorf("HiDPI mode %v does not fit the box", m)
+		}
+	}
+	d.Width, d.Height = 4000, 3000
+	if w, _ := d.Box(); w != 8000 {
+		t.Errorf("a size larger than the box gets a %d box", w)
+	}
+	d.Width, d.Height = 2048, 1536
 
 	d.HiDPI = false
 	if w, h := d.PixelSize(); w != 2048 || h != 1536 {

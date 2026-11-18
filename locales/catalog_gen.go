@@ -694,11 +694,11 @@ func (msgs Messages) ButtonDelete() string {
 	return Catalog.Format(msgs.locale, "buttonDelete", nil)
 }
 
-// NoteRemount says "Saving remounts the display"
+// NoteRemount says "Renaming remounts the display"
 // in the language the app shows.
 func NoteRemount() string { return In(i18n.Locale()).NoteRemount() }
 
-// NoteRemount says "Saving remounts the display"
+// NoteRemount says "Renaming remounts the display"
 // in the language of msgs.
 func (msgs Messages) NoteRemount() string {
 	return Catalog.Format(msgs.locale, "noteRemount", nil)
@@ -864,6 +864,16 @@ func HintChooseInUU(name string) string { return In(i18n.Locale()).HintChooseInU
 // in the language of msgs.
 func (msgs Messages) HintChooseInUU(name string) string {
 	return Catalog.Format(msgs.locale, "hintChooseInUU", map[string]any{"name": name})
+}
+
+// HintReselect says "UU远程 is still streaming the old shape. In UU远程, switch to another screen and back."
+// in the language the app shows.
+func HintReselect() string { return In(i18n.Locale()).HintReselect() }
+
+// HintReselect says "UU远程 is still streaming the old shape. In UU远程, switch to another screen and back."
+// in the language of msgs.
+func (msgs Messages) HintReselect() string {
+	return Catalog.Format(msgs.locale, "hintReselect", nil)
 }
 
 // ButtonMount says "Mount"

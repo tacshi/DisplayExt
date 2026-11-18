@@ -75,7 +75,7 @@
   "helpScreensOff": "UU远程 会话连接期间，这台 Mac 的其他屏幕会变黑，窗口会移到这个显示器上。会话结束或显示器卸载时屏幕会恢复，DisplayExt 意外退出时也会。",
   "fieldConnectFrom": "连接设备",
   "connectAny": "任意设备",
-  "helpConnectAny": "任意设备连接时都会挂载。",
+  "helpConnectAny": "任意设备连接时都会挂载。设备连接过一次后会出现在此列表中。",
   "helpConnectDevice": "仅在 {device} 连接时挂载。",
   "helpConnectNone": "先用每台设备各连接一次，再在这里选择。",
   "helpConnectAllow": "要区分设备，请在“辅助功能”中允许 DisplayExt 读取 UU远程 的窗口。",

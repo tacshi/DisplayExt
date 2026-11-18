@@ -75,7 +75,7 @@
   "helpScreensOff": "While a UU远程 session is connected, this Mac's other screens go dark and their windows move here. They come back when the session ends or the display unmounts, even if DisplayExt quits unexpectedly.",
   "fieldConnectFrom": "Connect from",
   "connectAny": "Any device",
-  "helpConnectAny": "Mounts for whichever device connects.",
+  "helpConnectAny": "Mounts for whichever device connects. A device is listed here after it connects once.",
   "helpConnectDevice": "Mounts only while {device} is connected.",
   "helpConnectNone": "Connect once from each device, then choose it here.",
   "helpConnectAllow": "To tell your devices apart, allow DisplayExt to read UU远程's window in Accessibility.",

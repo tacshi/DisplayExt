@@ -736,11 +736,11 @@ func (msgs Messages) ConnectAny() string {
 	return Catalog.Format(msgs.locale, "connectAny", nil)
 }
 
-// HelpConnectAny says "Mounts for whichever device connects."
+// HelpConnectAny says "Mounts for whichever device connects. A device is listed here after it connects once."
 // in the language the app shows.
 func HelpConnectAny() string { return In(i18n.Locale()).HelpConnectAny() }
 
-// HelpConnectAny says "Mounts for whichever device connects."
+// HelpConnectAny says "Mounts for whichever device connects. A device is listed here after it connects once."
 // in the language of msgs.
 func (msgs Messages) HelpConnectAny() string {
 	return Catalog.Format(msgs.locale, "helpConnectAny", nil)

@@ -134,10 +134,12 @@ language and see whether a UU远程 session is connected.
   size under "Looks like", not in System Settings.
 - **Which device is connected.** UU远程 lists the device controlling the Mac
   under 本机被控中 in its window. DisplayExt reads that list through
-  Accessibility while a session is connected, and only reads: it never
-  clicks, opens or switches anything in UU远程. Displays set to a device wait
-  up to three seconds for its name; if it can't be read, every display that
-  follows UU远程 mounts, as before. For phones, "Looks like" offers and
+  Accessibility while a session is connected. It never clicks or switches
+  anything in UU远程; if UU远程's window is closed, it reopens it in the
+  background, reads it and minimizes it to the Dock. Displays set to a device
+  wait up to three seconds for its name; if it still can't be read,
+  DisplayExt assumes the device that connected last, so only one display
+  takes over the screen. For phones, "Looks like" offers and
   defaults to the size that is pixel for pixel on the phone's screen, marked
   "Sharpest".
 - **UU远程 sessions.** macOS has no system-wide "remote session" state for

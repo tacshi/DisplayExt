@@ -60,3 +60,57 @@ func TestWatcherReports(t *testing.T) {
 		t.Fatal("no first reading")
 	}
 }
+
+func TestWatcherReopensAClosedWindowOnce(t *testing.T) {
+	open, minimized, reopens := false, 0, 0
+	w := &Watcher{
+		find:  func() int32 { return 7 },
+		trust: func() bool { return true },
+		read: func(int32) ([]Element, error) {
+			if !open {
+				return nil, ErrNoWindows
+			}
+			return []Element{node(Other, text("本机被控中"), node(Table, controllerRow("APPLE:iPad17,3")))}, nil
+		},
+		reopen:   func() error { reopens++; open = true; return nil },
+		minimize: func(int32) error { minimized++; return nil },
+		wake:     make(chan struct{}, 1),
+	}
+	w.SetActive(true)
+	r := w.sample()
+	if r.Device != "APPLE:iPad17,3" || !r.Reopened || reopens != 1 || minimized != 1 {
+		t.Fatalf("first sample %+v after %d reopens, %d minimizes", r, reopens, minimized)
+	}
+	w.sample()
+	if reopens != 1 || minimized != 1 {
+		t.Errorf("reopened %d and minimized %d times in one session", reopens, minimized)
+	}
+	w.SetActive(false)
+	w.sample()
+	open = false
+	w.SetActive(true)
+	w.sample()
+	if reopens != 2 {
+		t.Errorf("a new session did not reopen the window: %d", reopens)
+	}
+}
+
+func TestWatcherReopensOnlyOnceWhenItStaysClosed(t *testing.T) {
+	reopens := 0
+	w := &Watcher{
+		find:   func() int32 { return 7 },
+		trust:  func() bool { return true },
+		read:   func(int32) ([]Element, error) { return nil, ErrNoWindows },
+		reopen: func() error { reopens++; return nil },
+		wake:   make(chan struct{}, 1),
+	}
+	w.SetActive(true)
+	for range 3 {
+		if r := w.sample(); !r.NoWindow {
+			t.Fatalf("sample %+v", r)
+		}
+	}
+	if reopens != 1 {
+		t.Errorf("reopened %d times", reopens)
+	}
+}

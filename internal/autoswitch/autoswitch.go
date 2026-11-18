@@ -6,6 +6,7 @@ type Switcher struct {
 	connected bool
 	device    string
 	blind     bool
+	guess     string
 
 	override map[string]bool
 }
@@ -19,7 +20,7 @@ func (s *Switcher) SetConnected(connected bool) bool {
 		return false
 	}
 	s.connected = connected
-	s.device, s.blind = "", false
+	s.device, s.blind, s.guess = "", false, ""
 	clear(s.override)
 	return true
 }
@@ -34,11 +35,11 @@ func (s *Switcher) SetDevice(name string) bool {
 	return true
 }
 
-func (s *Switcher) SetBlind(blind bool) bool {
-	if !s.connected || blind == s.blind {
+func (s *Switcher) SetBlind(guess string) bool {
+	if !s.connected || (s.blind && guess == s.guess) {
 		return false
 	}
-	s.blind = blind
+	s.blind, s.guess = true, guess
 	return true
 }
 
@@ -64,6 +65,8 @@ func (s *Switcher) Want(d config.Display) bool {
 		return true
 	case s.device != "":
 		return d.ConnectFrom == s.device
+	case !s.blind:
+		return false
 	}
-	return s.blind
+	return s.guess == "" || d.ConnectFrom == s.guess
 }

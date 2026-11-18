@@ -11,19 +11,27 @@ type Reading struct {
 	Trusted  bool
 	Device   string
 	NoWindow bool
+	Reopened bool
 	Err      string
 }
 
 type Watcher struct {
-	find   func() int32
-	read   func(pid int32) ([]Element, error)
-	trust  func() bool
-	active atomic.Bool
-	wake   chan struct{}
+	find     func() int32
+	read     func(pid int32) ([]Element, error)
+	trust    func() bool
+	reopen   func() error
+	minimize func(pid int32) error
+	pause    time.Duration
+	active   atomic.Bool
+	wake     chan struct{}
+
+	reopened  bool
+	minimized bool
 }
 
 func NewWatcher(find func() int32) *Watcher {
-	return &Watcher{find: find, read: Read, trust: Trusted, wake: make(chan struct{}, 1)}
+	return &Watcher{find: find, read: Read, trust: Trusted, reopen: Reopen, minimize: Minimize,
+		pause: 800 * time.Millisecond, wake: make(chan struct{}, 1)}
 }
 
 func (w *Watcher) SetActive(on bool) {
@@ -61,7 +69,11 @@ func (w *Watcher) Run(ctx context.Context, every time.Duration, onChange func(Re
 
 func (w *Watcher) sample() Reading {
 	r := Reading{Trusted: w.trust()}
-	if !r.Trusted || !w.active.Load() {
+	if !w.active.Load() {
+		w.reopened, w.minimized = false, false
+		return r
+	}
+	if !r.Trusted {
 		return r
 	}
 	pid := w.find()
@@ -70,6 +82,18 @@ func (w *Watcher) sample() Reading {
 		return r
 	}
 	wins, err := w.read(pid)
+	if errors.Is(err, ErrNoWindows) && !w.reopened && w.reopen != nil {
+		w.reopened = true
+		if rerr := w.reopen(); rerr == nil {
+			time.Sleep(w.pause)
+			wins, err = w.read(pid)
+		}
+	}
+	if err == nil && w.reopened && !w.minimized && w.minimize != nil {
+		w.minimized = true
+		_ = w.minimize(pid)
+	}
+	r.Reopened = w.reopened
 	switch {
 	case errors.Is(err, ErrNotTrusted):
 		r.Trusted = false

@@ -5,6 +5,7 @@ package uuwindow
 import (
 	"errors"
 	"fmt"
+	"os/exec"
 	"sync"
 
 	"github.com/ebitengine/purego"
@@ -29,6 +30,7 @@ var (
 	axCreateApplication           func(pid int32) uintptr
 	axCopyAttributeValue          func(el, attr uintptr, out *uintptr) int32
 	axSetMessagingTimeout         func(el uintptr, seconds float32) int32
+	axSetAttributeValue           func(el, attr, value uintptr) int32
 	axElementTypeID               func() uintptr
 	cfGetTypeID                   func(v uintptr) uintptr
 	cfStringTypeID                func() uintptr
@@ -58,6 +60,7 @@ func load() error {
 		purego.RegisterLibFunc(&axCreateApplication, ax, "AXUIElementCreateApplication")
 		purego.RegisterLibFunc(&axCopyAttributeValue, ax, "AXUIElementCopyAttributeValue")
 		purego.RegisterLibFunc(&axSetMessagingTimeout, ax, "AXUIElementSetMessagingTimeout")
+		purego.RegisterLibFunc(&axSetAttributeValue, ax, "AXUIElementSetAttributeValue")
 		purego.RegisterLibFunc(&axElementTypeID, ax, "AXUIElementGetTypeID")
 		purego.RegisterLibFunc(&cfGetTypeID, cf, "CFGetTypeID")
 		purego.RegisterLibFunc(&cfStringTypeID, cf, "CFStringGetTypeID")
@@ -133,6 +136,38 @@ func Read(pid int32) ([]Element, error) {
 		}
 	})
 	return out, err
+}
+
+func Reopen() error {
+	return exec.Command("/usr/bin/open", "-g", "-b", BundleID).Run()
+}
+
+func Minimize(pid int32) error {
+	if err := load(); err != nil {
+		return err
+	}
+	if !axIsProcessTrusted() {
+		return ErrNotTrusted
+	}
+	var err error
+	objc.AutoreleasePool(func() {
+		app := axCreateApplication(pid)
+		if app == 0 {
+			err = fmt.Errorf("uuwindow: no Accessibility element for pid %d", pid)
+			return
+		}
+		defer cfRelease(app)
+		axSetMessagingTimeout(app, timeout)
+		wins := windows(app)
+		yes := objc.ClassID("NSNumber").Send(objc.Sel("numberWithBool:"), true)
+		for _, w := range wins {
+			if e := axSetAttributeValue(w, uintptr(objc.NSString("AXMinimized")), uintptr(yes)); e != 0 && err == nil {
+				err = fmt.Errorf("uuwindow: minimizing UU远程's window: AXError %d", e)
+			}
+			cfRelease(w)
+		}
+	})
+	return err
 }
 
 func windows(app uintptr) []uintptr {

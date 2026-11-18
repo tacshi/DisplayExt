@@ -42,6 +42,7 @@ type App struct {
 	devices  *uuwindow.Watcher
 	trusted  bool
 	noWindow bool
+	reopened bool
 
 	tray     *mygo.Tray
 	win      *mygo.Window
@@ -255,13 +256,18 @@ const deviceWait = 3 * time.Second
 
 func (a *App) waitForDevice() {
 	if !a.trusted {
-		a.sw.SetBlind(true)
+		a.sw.SetBlind(a.guess())
 		return
 	}
 	time.AfterFunc(deviceWait, func() {
 		mygo.RunOnMain(func() {
-			if a.sw.Connected() && a.sw.Device() == "" && a.sw.SetBlind(true) {
-				log.Printf("UU远程: could not tell which device connected within %s; mounting every display that follows UU远程", deviceWait)
+			guess := a.guess()
+			if a.sw.Connected() && a.sw.Device() == "" && a.sw.SetBlind(guess) {
+				if guess != "" {
+					log.Printf("UU远程: could not tell which device connected within %s; assuming %s, the last one", deviceWait, guess)
+				} else {
+					log.Printf("UU远程: could not tell which device connected within %s; mounting every display that follows UU远程", deviceWait)
+				}
 				a.apply()
 			}
 		})
@@ -276,6 +282,10 @@ func (a *App) deviceRead(r uuwindow.Reading) {
 	if r.Err != "" {
 		log.Println("UU远程 window:", r.Err)
 	}
+	if r.Reopened && !a.reopened {
+		log.Println("UU远程 window: it was closed; reopened it in the background to see which device connected, then minimized it")
+	}
+	a.reopened = r.Reopened
 	switch {
 	case r.NoWindow:
 		a.noWindow = true
@@ -284,7 +294,7 @@ func (a *App) deviceRead(r uuwindow.Reading) {
 	}
 	changed := false
 	if !r.Trusted {
-		changed = a.sw.SetBlind(true)
+		changed = a.sw.SetBlind(a.guess())
 	}
 	if r.Device != "" {
 		if a.cfg.SawDevice(r.Device) {
@@ -300,6 +310,17 @@ func (a *App) deviceRead(r uuwindow.Reading) {
 		return
 	}
 	a.changed()
+}
+
+func (a *App) guess() string {
+	for _, name := range a.cfg.Devices {
+		for _, d := range a.cfg.Displays {
+			if d.Trigger == config.TriggerUU && d.ConnectFrom == name {
+				return name
+			}
+		}
+	}
+	return ""
 }
 
 func (a *App) showSettings() {

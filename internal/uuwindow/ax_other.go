@@ -14,3 +14,7 @@ func Trusted() bool { return false }
 func AskForTrust() bool { return false }
 
 func Read(int32) ([]Element, error) { return nil, ErrNotTrusted }
+
+func Reopen() error { return ErrNotTrusted }
+
+func Minimize(int32) error { return ErrNotTrusted }

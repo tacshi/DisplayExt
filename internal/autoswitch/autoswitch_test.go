@@ -111,8 +111,12 @@ func TestConnectFrom(t *testing.T) {
 	if s.Device() != "" {
 		t.Error("the device outlived the session")
 	}
-	s.SetBlind(true)
+	s.SetBlind("Rocky的iPad")
+	if s.Want(phone) || !s.Want(pad) || !s.Want(any) {
+		t.Errorf("unreadable, guessing the iPad: phone %v pad %v any %v", s.Want(phone), s.Want(pad), s.Want(any))
+	}
+	s.SetBlind("")
 	if !s.Want(phone) || !s.Want(pad) {
-		t.Error("with the device unreadable, displays for a device stay unmounted")
+		t.Error("unreadable with no guess: displays for a device stay unmounted")
 	}
 }

@@ -54,3 +54,11 @@ func isBlack(uint32) bool { return false }
 func ScreenName(uint32) string { return "" }
 
 func (d *Display) Reapply(Spec, Options) error { return errUnsupported }
+
+type ModeInfo struct {
+	Mode
+	IOFlags uint32
+	Usable  bool
+}
+
+func ListModes(uint32) []ModeInfo { return nil }

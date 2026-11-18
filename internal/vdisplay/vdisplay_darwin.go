@@ -48,6 +48,8 @@ var (
 	cgDisplayModeGetPixelWidth    func(mode uintptr) uint64
 	cgDisplayModeGetPixelHeight   func(mode uintptr) uint64
 	cgDisplayModeGetRefreshRate   func(mode uintptr) float64
+	cgDisplayModeGetIOFlags       func(mode uintptr) uint32
+	cgDisplayModeUsableForDesktop func(mode uintptr) bool
 	cgDisplayVendorNumber         func(id uint32) uint32
 	cgBeginDisplayConfiguration   func(config *uintptr) int32
 	cgConfigureDisplayWithMode    func(config uintptr, id uint32, mode uintptr, options uintptr) int32
@@ -103,6 +105,8 @@ func load() error {
 		purego.RegisterLibFunc(&cgDisplayModeGetPixelWidth, cg, "CGDisplayModeGetPixelWidth")
 		purego.RegisterLibFunc(&cgDisplayModeGetPixelHeight, cg, "CGDisplayModeGetPixelHeight")
 		purego.RegisterLibFunc(&cgDisplayModeGetRefreshRate, cg, "CGDisplayModeGetRefreshRate")
+		purego.RegisterLibFunc(&cgDisplayModeGetIOFlags, cg, "CGDisplayModeGetIOFlags")
+		purego.RegisterLibFunc(&cgDisplayModeUsableForDesktop, cg, "CGDisplayModeIsUsableForDesktopGUI")
 		purego.RegisterLibFunc(&cgDisplayVendorNumber, cg, "CGDisplayVendorNumber")
 		purego.RegisterLibFunc(&cgBeginDisplayConfiguration, cg, "CGBeginDisplayConfiguration")
 		purego.RegisterLibFunc(&cgConfigureDisplayWithMode, cg, "CGConfigureDisplayWithDisplayMode")
@@ -467,11 +471,7 @@ func ActiveDisplays() []uint32 {
 func IsActive(id uint32) bool { return slices.Contains(ActiveDisplays(), id) }
 
 func applyMode(id uint32, s Spec) error {
-	scale := 1
-	if s.HiDPI {
-		scale = 2
-	}
-	want := Mode{PointsW: s.PointsW, PointsH: s.PointsH, PixelsW: s.PointsW * scale, PixelsH: s.PointsH * scale, RefreshHz: float64(s.RefreshHz)}
+	want := s.Want()
 	if cur, ok := CurrentMode(id); ok && cur.Same(want) {
 		return nil
 	}
@@ -557,4 +557,33 @@ func ScreenName(id uint32) string {
 		}
 	})
 	return name
+}
+
+type ModeInfo struct {
+	Mode
+	IOFlags uint32
+	Usable  bool
+}
+
+func ListModes(id uint32) []ModeInfo {
+	if load() != nil {
+		return nil
+	}
+	var out []ModeInfo
+	objc.AutoreleasePool(func() {
+		opts := objc.ClassID("NSDictionary").Send(objc.Sel("dictionaryWithObject:forKey:"),
+			objc.ClassID("NSNumber").Send(objc.Sel("numberWithBool:"), true),
+			objc.NSString("kCGDisplayShowDuplicateLowResolutionModes"))
+		list := cgDisplayCopyAllDisplayModes(id, opts)
+		if list == 0 {
+			return
+		}
+		defer list.Send(objc.Sel("release"))
+		n := int(list.Send(objc.Sel("count")))
+		for i := range n {
+			m := uintptr(list.Send(objc.Sel("objectAtIndex:"), i))
+			out = append(out, ModeInfo{Mode: modeOf(m), IOFlags: cgDisplayModeGetIOFlags(m), Usable: cgDisplayModeUsableForDesktop(m)})
+		}
+	})
+	return out
 }

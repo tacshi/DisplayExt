@@ -127,6 +127,11 @@ language and see whether a UU远程 session is connected.
   keeps its number, and UU远程 keeps showing it. After a new ratio, UU远程
   keeps streaming the old shape until you switch to another screen and back
   in it, as Snug found. Only renaming remounts a display.
+- **Keeps its mode.** UU远程 sometimes resets a display to a mode it noted
+  earlier, such as the 1× mode a new display shows for a moment before
+  DisplayExt switches it to HiDPI. While a display is mounted, its helper
+  puts the chosen mode back, at most three times in 30 seconds. Change the
+  size under "Looks like", not in System Settings.
 - **Which device is connected.** UU远程 lists the device controlling the Mac
   under 本机被控中 in its window. DisplayExt reads that list through
   Accessibility while a session is connected, and only reads: it never

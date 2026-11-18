@@ -54,6 +54,14 @@ func FromConfig(d config.Display) Spec {
 	}
 }
 
+func (s Spec) Want() Mode {
+	scale := 1
+	if s.HiDPI {
+		scale = 2
+	}
+	return Mode{PointsW: s.PointsW, PointsH: s.PointsH, PixelsW: s.PointsW * scale, PixelsH: s.PointsH * scale, RefreshHz: float64(s.RefreshHz)}
+}
+
 func (s Spec) Modes() []config.Size {
 	out := []config.Size{{W: s.PointsW, H: s.PointsH}}
 	for _, m := range s.Extra {

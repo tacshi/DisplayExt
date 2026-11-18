@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"slices"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -100,8 +101,13 @@ func serve(spec vdisplay.Spec, off []uint32, stdin io.Reader, stdout io.Writer) 
 	}()
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
+	hold := time.NewTicker(holdCheck)
+	defer hold.Stop()
+	keep := keeper{on: d.ModeErr == nil}
 	for running := true; running; {
 		select {
+		case now := <-hold.C:
+			keep.check(d, spec, now)
 		case c, ok := <-cmds:
 			if !ok {
 				running = false
@@ -111,6 +117,7 @@ func serve(spec vdisplay.Spec, off []uint32, stdin io.Reader, stdout io.Writer) 
 				r := reshape(d, spec, *c.Spec)
 				if !r.Remount && r.ModeError == "" {
 					spec = *c.Spec
+					keep = keeper{on: true}
 				}
 				report(stdout, r)
 				break
@@ -150,6 +157,43 @@ func reshape(d *vdisplay.Display, cur, next vdisplay.Spec) Ready {
 	}
 	fmt.Fprintf(os.Stderr, "helper: display %d changed in place to %d×%d\n", d.ID(), next.PointsW, next.PointsH)
 	return r
+}
+
+const (
+	holdCheck  = time.Second
+	holdWindow = 30 * time.Second
+	holdTimes  = 3
+)
+
+type keeper struct {
+	on    bool
+	fixes []time.Time
+}
+
+func (k *keeper) allow(now time.Time) bool {
+	k.fixes = slices.DeleteFunc(k.fixes, func(t time.Time) bool { return now.Sub(t) >= holdWindow })
+	if len(k.fixes) >= holdTimes {
+		return false
+	}
+	k.fixes = append(k.fixes, now)
+	return true
+}
+
+func (k *keeper) check(d *vdisplay.Display, spec vdisplay.Spec, now time.Time) {
+	if !k.on {
+		return
+	}
+	cur, ok := vdisplay.CurrentMode(d.ID())
+	if !ok || cur.Same(spec.Want()) {
+		return
+	}
+	if !k.allow(now) {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "helper: display %d was switched to %s; putting back %d×%d\n", d.ID(), cur, spec.PointsW, spec.PointsH)
+	if err := d.ApplyMode(spec); err != nil {
+		fmt.Fprintln(os.Stderr, "helper: putting the mode back:", err)
+	}
 }
 
 type screens struct {

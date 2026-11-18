@@ -135,3 +135,49 @@ func modeOf(id uint32) string {
 	}
 	return "unknown"
 }
+
+func runModes() int {
+	fmt.Printf("Mode list probe — %s\n", time.Now().Format(time.DateTime))
+	fmt.Println("An iPhone 15 Pro display (540×921 HiDPI) is created twice; every mode macOS offers is listed.")
+	fmt.Println("Flags: native 0x02000000, default 0x00000004, valid 0x00000001, safe 0x00000002.")
+	a := config.Aspect{W: 393, H: 670}
+	d := config.NewDisplay("DisplayExt Modes Test", a)
+	d.Width, d.Height, d.Serial = 540, 921, 0x44580041
+	newSpec := vdisplay.FromConfig(d)
+	oldSpec := newSpec
+	oldSpec.Serial = 0x44580042
+	oldSpec.MaxPixelsW, oldSpec.MaxPixelsH = 0, 0
+	oldSpec.Extra = nil
+	oldSpec.PointsW, oldSpec.PointsH = oldSpec.PixelsW, oldSpec.PixelsH
+	for i, c := range []struct {
+		name string
+		spec vdisplay.Spec
+	}{
+		{"before: 1080×1842 registered in pixels, box 1080×1842", oldSpec},
+		{"now: sizes registered in points, box 6400×6400", newSpec},
+	} {
+		fmt.Printf("\n[%d/2] %s\n", i+1, c.name)
+		disp, err := vdisplay.Create(c.spec, vdisplay.DefaultOptions)
+		if err != nil {
+			fmt.Println("  could not create it:", err)
+			continue
+		}
+		id := disp.ID()
+		disp.WaitActive(8 * time.Second)
+		time.Sleep(time.Second)
+		fmt.Printf("  display %d comes up at %s\n", id, modeOf(id))
+		cur, _ := vdisplay.CurrentMode(id)
+		for _, m := range vdisplay.ListModes(id) {
+			mark := " "
+			if m.Same(cur) {
+				mark = "*"
+			}
+			fmt.Printf("  %s %-32s flags %#010x usable %v\n", mark, m.String(), m.IOFlags, m.Usable)
+		}
+		_ = disp.Close()
+		for t := time.Now(); time.Since(t) < 5*time.Second && slices.Contains(vdisplay.ActiveDisplays(), id); {
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+	return 0
+}

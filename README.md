@@ -37,6 +37,10 @@ DisplayExt does just this one job, and does it from the menu bar.
   800 iPads and phones, landscape or portrait, and the display takes its
   shape. On a phone it leaves room for UU远程's toolbars. For anything else,
   choose 4:3, 16:10, 16:9, 3:2 or 21:9, or any ratio of your own.
+- **One display per device.** With Accessibility allowed, DisplayExt reads
+  which device is connected from UU远程's window, as Snug does, and mounts
+  only the displays set to **Connect from** that device. Connect once from
+  each device to see it there.
 - **HiDPI.** "Looks like" 2048 × 1536, rendered at 4096 × 3072 pixels. Sizes
   too small for macOS to offer HiDPI are not listed.
 - **Any refresh rate** from 1 to 240 Hz, with presets up to 144 Hz.
@@ -123,6 +127,14 @@ language and see whether a UU远程 session is connected.
   keeps its number, and UU远程 keeps showing it. After a new ratio, UU远程
   keeps streaming the old shape until you switch to another screen and back
   in it, as Snug found. Only renaming remounts a display.
+- **Which device is connected.** UU远程 lists the device controlling the Mac
+  under 本机被控中 in its window. DisplayExt reads that list through
+  Accessibility while a session is connected, and only reads: it never
+  clicks, opens or switches anything in UU远程. Displays set to a device wait
+  up to three seconds for its name; if it can't be read, every display that
+  follows UU远程 mounts, as before. For phones, "Looks like" offers and
+  defaults to the size that is pixel for pixel on the phone's screen, marked
+  "Sharpest".
 - **UU远程 sessions.** macOS has no system-wide "remote session" state for
   third-party apps. While a session is connected, UU远程's `UURemoteServer`
   holds a power assertion named `UURemote Disable Display Sleep`; DisplayExt

@@ -4,6 +4,8 @@ import "displayext/internal/config"
 
 type Switcher struct {
 	connected bool
+	device    string
+	blind     bool
 
 	override map[string]bool
 }
@@ -17,7 +19,26 @@ func (s *Switcher) SetConnected(connected bool) bool {
 		return false
 	}
 	s.connected = connected
+	s.device, s.blind = "", false
 	clear(s.override)
+	return true
+}
+
+func (s *Switcher) Device() string { return s.device }
+
+func (s *Switcher) SetDevice(name string) bool {
+	if !s.connected || name == s.device {
+		return false
+	}
+	s.device = name
+	return true
+}
+
+func (s *Switcher) SetBlind(blind bool) bool {
+	if !s.connected || blind == s.blind {
+		return false
+	}
+	s.blind = blind
 	return true
 }
 
@@ -36,5 +57,13 @@ func (s *Switcher) Want(d config.Display) bool {
 	if v, ok := s.override[d.ID]; ok {
 		return v
 	}
-	return s.connected
+	switch {
+	case !s.connected:
+		return false
+	case d.ConnectFrom == "":
+		return true
+	case s.device != "":
+		return d.ConnectFrom == s.device
+	}
+	return s.blind
 }

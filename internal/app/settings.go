@@ -23,6 +23,10 @@ type Backend interface {
 	Wanted(id string) bool
 	UUStatus() uudetect.Status
 	UUScreen() string
+	UUDevice() string
+	Devices() []string
+	AccessibilityAllowed() bool
+	AllowAccessibility()
 	Unavailable() string
 	SettingsReset() string
 
@@ -67,6 +71,9 @@ type Settings struct {
 	hz               float64
 	trigger          int
 	autoName         bool
+	connectFrom      string
+	connectChoice    string
+	connectShown     string
 
 	pickerOpen bool
 	query      string
@@ -150,6 +157,14 @@ func (s *Settings) syncChoices() {
 	}
 	s.sizeChoice = s.sizeLabel(s.size)
 	s.sizeShown = s.sizeChoice
+	if s.connectChoice != s.connectShown {
+		s.connectFrom = ""
+		if s.connectChoice != locales.ConnectAny() {
+			s.connectFrom = s.connectChoice
+		}
+	}
+	s.connectChoice = connectLabel(s.connectFrom)
+	s.connectShown = s.connectChoice
 	if tag, ok := languageOf(s.language); ok && tag != s.b.Language() {
 		s.b.SetLanguage(tag)
 	}
@@ -183,6 +198,9 @@ func (s *Settings) load(d config.Display) {
 	s.sizeShown = s.sizeChoice
 	s.hz = float64(d.RefreshHz)
 	s.trigger = max(0, slices.Index(triggers, d.Trigger))
+	s.connectFrom = d.ConnectFrom
+	s.connectChoice = connectLabel(s.connectFrom)
+	s.connectShown = s.connectChoice
 	s.autoName = isAutoName(d.Name, d.Device)
 }
 
@@ -214,6 +232,7 @@ func (s *Settings) compose() config.Display {
 	d.Width, d.Height = s.size.W, s.size.H
 	d.RefreshHz = int(math.Round(s.hz))
 	d.Trigger = triggers[s.trigger]
+	d.ConnectFrom = s.connectFrom
 	d.Name = strings.TrimSpace(d.Name)
 	return d
 }
@@ -225,18 +244,16 @@ func (s *Settings) native() (config.Size, bool) {
 	if !ok {
 		return config.Size{}, false
 	}
-	n, ok := m.Native(s.orientation == portrait)
-	return n, ok && config.Aspect(n).Valid()
+	n := m.Sharpest(s.orientation == portrait)
+	d := s.compose()
+	d.Width, d.Height = n.W, n.H
+	return n, d.Check() == config.NoProblem
 }
 
 func (s *Settings) sizeChoices() []config.Size {
 	out := s.aspect().Sizes(s.draft.HiDPI)
 	if n, ok := s.native(); ok && !slices.Contains(out, n) {
-		d := s.compose()
-		d.Width, d.Height = n.W, n.H
-		if d.Check() == config.NoProblem {
-			out = append(out, n)
-		}
+		out = append(out, n)
 	}
 	if s.size.W > 0 && !slices.Contains(out, s.size) {
 		out = append(out, s.size)
@@ -266,6 +283,9 @@ func (s *Settings) sizeOptions() []string {
 func (s *Settings) defaultSize() config.Size {
 	a := s.aspect()
 	if m, ok := s.model(); ok && m.Kind == devices.Phone {
+		if n, ok := s.native(); ok {
+			return n
+		}
 		if sizes := a.Sizes(s.draft.HiDPI); len(sizes) > 0 {
 			return sizes[0]
 		}
@@ -448,7 +468,9 @@ func (s *Settings) summary() string {
 	uu := s.b.UUStatus()
 	switch uu.State {
 	case uudetect.Connected:
-		switch {
+		switch device := s.b.UUDevice(); {
+		case s.saved.ConnectFrom != "" && device != "" && device != s.saved.ConnectFrom:
+			return locales.SummaryUUOtherDevice(device)
 		case uu.Showing == 0:
 			return locales.SummaryUUConnected()
 		case s.showingThis():
@@ -564,6 +586,9 @@ func (s *Settings) displayPage(c *ui.Context, p palette) {
 		row(c, p, true, locales.FieldMount(), triggerHelp(triggers[s.trigger]), func() {
 			ui.Segmented(c.Key("trigger"), &s.trigger, locales.TriggerManual(), locales.TriggerUU()).Label(locales.LabelWhenToMount())
 		})
+		if triggers[s.trigger] == config.TriggerUU {
+			s.connectRow(c, p)
+		}
 		row(c, p, false, locales.FieldScreensOff(), locales.HelpScreensOff(), func() {
 			ui.Switch(c.Key("screensOff"), &s.draft.ScreensOff).Label(locales.FieldScreensOff())
 		})
@@ -674,7 +699,7 @@ func (s *Settings) generalPage(c *ui.Context, p palette) {
 					col = t.Success
 				}
 				dot(c, col)
-				ui.Text(c, uuLabel(st, s.b.UUScreen())).TextColor(t.TextMuted)
+				ui.Text(c, uuLabel(st, s.b.UUDevice(), s.b.UUScreen())).TextColor(t.TextMuted)
 			})
 		})
 	})
@@ -806,5 +831,40 @@ func notice(c *ui.Context, p palette, title, detail string) {
 	card(c, p).Padding(14).Gap(4).BorderColor(t.Danger).Children(func() {
 		ui.Text(c, title).FontWeight(600).TextColor(t.Danger)
 		ui.Text(c, detail).FontSize(12).TextColor(t.TextMuted)
+	})
+}
+
+func connectLabel(device string) string {
+	if device == "" {
+		return locales.ConnectAny()
+	}
+	return device
+}
+
+func (s *Settings) connectOptions() []string {
+	out := []string{locales.ConnectAny()}
+	out = append(out, s.b.Devices()...)
+	if s.connectFrom != "" && !slices.Contains(out, s.connectFrom) {
+		out = append(out, s.connectFrom)
+	}
+	return out
+}
+
+func (s *Settings) connectRow(c *ui.Context, p palette) {
+	if !s.b.AccessibilityAllowed() {
+		row(c, p, false, locales.FieldConnectFrom(), locales.HelpConnectAllow(), func() {
+			ui.Button(c.Key("allowAX"), locales.ButtonAllow()).OnClick(s.b.AllowAccessibility)
+		})
+		return
+	}
+	help := locales.HelpConnectAny()
+	switch {
+	case s.connectFrom != "":
+		help = locales.HelpConnectDevice(s.connectFrom)
+	case len(s.b.Devices()) == 0:
+		help = locales.HelpConnectNone()
+	}
+	row(c, p, false, locales.FieldConnectFrom(), help, func() {
+		ui.Select(c.Key("connectFrom"), &s.connectChoice, s.connectOptions()).Width(240).Label(locales.FieldConnectFrom())
 	})
 }

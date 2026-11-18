@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 	"uuid"
@@ -50,7 +51,8 @@ type Display struct {
 	Serial    uint32  `json:"serial"`
 	Trigger   Trigger `json:"trigger"`
 
-	ScreensOff bool `json:"screensOff,omitzero"`
+	ScreensOff  bool   `json:"screensOff,omitzero"`
+	ConnectFrom string `json:"connectFrom,omitzero"`
 
 	Mounted bool `json:"mounted,omitzero"`
 }
@@ -65,6 +67,21 @@ type UURule struct {
 type Config struct {
 	Displays []Display `json:"displays"`
 	UU       UURule    `json:"uu"`
+	Devices  []string  `json:"devices,omitzero"`
+}
+
+const MaxDevices = 8
+
+func (c *Config) SawDevice(name string) bool {
+	if name == "" || (len(c.Devices) > 0 && c.Devices[0] == name) {
+		return false
+	}
+	c.Devices = slices.DeleteFunc(c.Devices, func(d string) bool { return d == name })
+	c.Devices = append([]string{name}, c.Devices...)
+	if len(c.Devices) > MaxDevices {
+		c.Devices = c.Devices[:MaxDevices]
+	}
+	return true
 }
 
 func DefaultUURule() UURule {

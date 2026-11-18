@@ -16,6 +16,10 @@ import (
 type fakeBackend struct {
 	uu       uudetect.Status
 	screen   string
+	device   string
+	seen     []string
+	trusted  bool
+	asked    bool
 	displays []config.Display
 	wanted   map[string]bool
 	failed   map[string]string
@@ -40,6 +44,10 @@ func (f *fakeBackend) Wanted(id string) bool         { return f.wanted[id] }
 func (f *fakeBackend) SettingsReset() string         { return f.reset }
 func (f *fakeBackend) UUStatus() uudetect.Status     { return f.uu }
 func (f *fakeBackend) UUScreen() string              { return f.screen }
+func (f *fakeBackend) UUDevice() string              { return f.device }
+func (f *fakeBackend) Devices() []string             { return f.seen }
+func (f *fakeBackend) AccessibilityAllowed() bool    { return f.trusted }
+func (f *fakeBackend) AllowAccessibility()           { f.asked = true }
 func (f *fakeBackend) Unavailable() string           { return "" }
 func (f *fakeBackend) OpenAtLogin() bool             { return f.login }
 func (f *fakeBackend) SetOpenAtLogin(on bool) error  { f.login = on; return nil }
@@ -396,8 +404,11 @@ func TestDevicePicker(t *testing.T) {
 	if s.pickerOpen || d.Device != "Apple iPhone 17 Pro Max" || s.orientation != portrait {
 		t.Fatalf("after choosing the iPhone: open %v, %+v", s.pickerOpen, d)
 	}
-	if d.Width != 540 || d.Height != 950 || d.Name != "iPhone 17 Pro Max" {
-		t.Errorf("iPhone portrait: %d×%d named %q, want 540×950 named iPhone 17 Pro Max", d.Width, d.Height, d.Name)
+	if d.Width != 660 || d.Height != 1161 || d.Name != "iPhone 17 Pro Max" {
+		t.Errorf("iPhone portrait: %d×%d named %q, want 660×1161 named iPhone 17 Pro Max", d.Width, d.Height, d.Name)
+	}
+	if !slices.Contains(s.sizeOptions(), "540 × 950") {
+		t.Errorf("the largest-text size is gone: %q", s.sizeOptions())
 	}
 	if !tt.HasText("Leaves room for UU远程's toolbars on this phone.") {
 		t.Errorf("no phone help: %q", tt.Texts())
@@ -443,7 +454,7 @@ func TestDevicePickerNoMatch(t *testing.T) {
 func TestNativeSizeOption(t *testing.T) {
 	f := newFake()
 	s := NewSettings(f)
-	want := "1376 × 1032 · Same as iPad Pro 13″"
+	want := "1376 × 1032 · Sharpest on iPad Pro 13″"
 	if !slices.Contains(s.sizeOptions(), want) {
 		t.Fatalf("no native size in %q", s.sizeOptions())
 	}
@@ -536,5 +547,57 @@ func TestReselectHintAfterRatioChange(t *testing.T) {
 	tt.Frame()
 	if tt.HasText(hint) {
 		t.Error("the hint stayed after switching away and back")
+	}
+}
+
+func TestConnectFromNeedsAccessibility(t *testing.T) {
+	f := newFake()
+	s := NewSettings(f)
+	tt := newTester(s)
+	for _, want := range []string{"Connect from", "To tell your devices apart, allow DisplayExt to read UU远程's window in Accessibility."} {
+		if !tt.HasText(want) {
+			t.Errorf("missing %q: %q", want, tt.Texts())
+		}
+	}
+	clickRole(t, tt, ui.RoleButton, "Allow…")
+	if !f.asked {
+		t.Error("Allow… did not ask for Accessibility")
+	}
+}
+
+func TestConnectFromChoosesADevice(t *testing.T) {
+	f := newFake()
+	f.trusted = true
+	s := NewSettings(f)
+	tt := newTester(s)
+	if !tt.HasText("Connect once from each device, then choose it here.") {
+		t.Errorf("no first-time help: %q", tt.Texts())
+	}
+	f.seen = []string{"Rocky的iPhone", "Rocky的iPad"}
+	tt.Frame()
+	if !slices.Equal(s.connectOptions(), []string{"Any device", "Rocky的iPhone", "Rocky的iPad"}) {
+		t.Errorf("options %q", s.connectOptions())
+	}
+	s.connectChoice = "Rocky的iPad"
+	tt.Frame()
+	if !tt.HasText("Mounts only while Rocky的iPad is connected.") || !s.dirty() {
+		t.Errorf("after choosing the iPad: dirty %v, %q", s.dirty(), tt.Texts())
+	}
+	if err := tt.Click("Save"); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.displays[0].ConnectFrom; got != "Rocky的iPad" {
+		t.Fatalf("saved connect from %q", got)
+	}
+	f.uu = uudetect.Status{State: uudetect.Connected}
+	f.device = "Rocky的iPhone"
+	tt.Frame()
+	if !tt.HasText("Follows UU远程 · Rocky的iPhone is connected") {
+		t.Errorf("no other-device summary: %q", tt.Texts())
+	}
+	s.connectChoice = "Any device"
+	tt.Frame()
+	if s.connectFrom != "" {
+		t.Errorf("Any device kept %q", s.connectFrom)
 	}
 }

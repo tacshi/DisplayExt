@@ -82,3 +82,37 @@ func TestForget(t *testing.T) {
 		t.Error("override survived Forget")
 	}
 }
+
+func TestConnectFrom(t *testing.T) {
+	s := New()
+	base, _ := displays()
+	phone, pad, any := base, base, base
+	phone.ID, phone.ConnectFrom = "phone", "Rocky的iPhone"
+	pad.ID, pad.ConnectFrom = "pad", "Rocky的iPad"
+	any.ID = "any"
+	if s.Want(phone) || s.Want(any) {
+		t.Fatal("wanted with no session")
+	}
+	if s.SetDevice("Rocky的iPhone") {
+		t.Error("a device was taken with no session")
+	}
+	s.SetConnected(true)
+	if s.Want(phone) || s.Want(pad) || !s.Want(any) {
+		t.Errorf("before the device is known: phone %v pad %v any %v", s.Want(phone), s.Want(pad), s.Want(any))
+	}
+	if !s.SetDevice("Rocky的iPhone") {
+		t.Fatal("SetDevice reported no change")
+	}
+	if !s.Want(phone) || s.Want(pad) || !s.Want(any) {
+		t.Errorf("iPhone connected: phone %v pad %v any %v", s.Want(phone), s.Want(pad), s.Want(any))
+	}
+	s.SetConnected(false)
+	s.SetConnected(true)
+	if s.Device() != "" {
+		t.Error("the device outlived the session")
+	}
+	s.SetBlind(true)
+	if !s.Want(phone) || !s.Want(pad) {
+		t.Error("with the device unreadable, displays for a device stay unmounted")
+	}
+}

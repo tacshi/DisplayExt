@@ -199,15 +199,13 @@ func (m Model) Aspect(portrait bool) config.Aspect {
 	return config.Aspect{W: l, H: s}
 }
 
-func (m Model) Native(portrait bool) (config.Size, bool) {
-	if m.Kind != Tablet {
-		return config.Size{}, false
-	}
-	short, long := m.Points, int(math.Round(m.long()))
+func (m Model) Sharpest(portrait bool) config.Size {
+	short := int(math.Round(float64(m.Screen[0]) / 2))
+	a := m.Aspect(portrait)
 	if portrait {
-		return config.Size{W: short, H: long}, true
+		return config.Size{W: short, H: int(math.Round(float64(short) * float64(a.H) / float64(a.W)))}
 	}
-	return config.Size{W: long, H: short}, true
+	return config.Size{W: int(math.Round(float64(short) * float64(a.W) / float64(a.H))), H: short}
 }
 
 func (m Model) ShortName() string {

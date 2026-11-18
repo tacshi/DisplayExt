@@ -114,6 +114,16 @@ func (msgs Messages) MenuFollowsUU() string {
 	return Catalog.Format(msgs.locale, "menuFollowsUU", nil)
 }
 
+// MenuFollowsDevice says "With {device} on UU远程"
+// in the language the app shows.
+func MenuFollowsDevice(device string) string { return In(i18n.Locale()).MenuFollowsDevice(device) }
+
+// MenuFollowsDevice says "With {device} on UU远程"
+// in the language of msgs.
+func (msgs Messages) MenuFollowsDevice(device string) string {
+	return Catalog.Format(msgs.locale, "menuFollowsDevice", map[string]any{"device": device})
+}
+
 // Working says "Working…"
 // in the language the app shows.
 func Working() string { return In(i18n.Locale()).Working() }
@@ -172,6 +182,28 @@ func UuNotRunning() string { return In(i18n.Locale()).UuNotRunning() }
 // in the language of msgs.
 func (msgs Messages) UuNotRunning() string {
 	return Catalog.Format(msgs.locale, "uuNotRunning", nil)
+}
+
+// UuConnectedFrom says "Connected from {device}"
+// in the language the app shows.
+func UuConnectedFrom(device string) string { return In(i18n.Locale()).UuConnectedFrom(device) }
+
+// UuConnectedFrom says "Connected from {device}"
+// in the language of msgs.
+func (msgs Messages) UuConnectedFrom(device string) string {
+	return Catalog.Format(msgs.locale, "uuConnectedFrom", map[string]any{"device": device})
+}
+
+// UuConnectedFromShowing says "Connected from {device} · showing {screen}"
+// in the language the app shows.
+func UuConnectedFromShowing(device string, screen string) string {
+	return In(i18n.Locale()).UuConnectedFromShowing(device, screen)
+}
+
+// UuConnectedFromShowing says "Connected from {device} · showing {screen}"
+// in the language of msgs.
+func (msgs Messages) UuConnectedFromShowing(device string, screen string) string {
+	return Catalog.Format(msgs.locale, "uuConnectedFromShowing", map[string]any{"device": device, "screen": screen})
 }
 
 // UuConnectedShowing says "Connected · showing {screen}"
@@ -524,11 +556,11 @@ func (msgs Messages) HelpLooksLike() string {
 	return Catalog.Format(msgs.locale, "helpLooksLike", nil)
 }
 
-// SizeNative says "{size} · Same as {device}"
+// SizeNative says "{size} · Sharpest on {device}"
 // in the language the app shows.
 func SizeNative(size string, device string) string { return In(i18n.Locale()).SizeNative(size, device) }
 
-// SizeNative says "{size} · Same as {device}"
+// SizeNative says "{size} · Sharpest on {device}"
 // in the language of msgs.
 func (msgs Messages) SizeNative(size string, device string) string {
 	return Catalog.Format(msgs.locale, "sizeNative", map[string]any{"size": size, "device": device})
@@ -684,6 +716,76 @@ func (msgs Messages) HelpScreensOff() string {
 	return Catalog.Format(msgs.locale, "helpScreensOff", nil)
 }
 
+// FieldConnectFrom says "Connect from"
+// in the language the app shows.
+func FieldConnectFrom() string { return In(i18n.Locale()).FieldConnectFrom() }
+
+// FieldConnectFrom says "Connect from"
+// in the language of msgs.
+func (msgs Messages) FieldConnectFrom() string {
+	return Catalog.Format(msgs.locale, "fieldConnectFrom", nil)
+}
+
+// ConnectAny says "Any device"
+// in the language the app shows.
+func ConnectAny() string { return In(i18n.Locale()).ConnectAny() }
+
+// ConnectAny says "Any device"
+// in the language of msgs.
+func (msgs Messages) ConnectAny() string {
+	return Catalog.Format(msgs.locale, "connectAny", nil)
+}
+
+// HelpConnectAny says "Mounts for whichever device connects."
+// in the language the app shows.
+func HelpConnectAny() string { return In(i18n.Locale()).HelpConnectAny() }
+
+// HelpConnectAny says "Mounts for whichever device connects."
+// in the language of msgs.
+func (msgs Messages) HelpConnectAny() string {
+	return Catalog.Format(msgs.locale, "helpConnectAny", nil)
+}
+
+// HelpConnectDevice says "Mounts only while {device} is connected."
+// in the language the app shows.
+func HelpConnectDevice(device string) string { return In(i18n.Locale()).HelpConnectDevice(device) }
+
+// HelpConnectDevice says "Mounts only while {device} is connected."
+// in the language of msgs.
+func (msgs Messages) HelpConnectDevice(device string) string {
+	return Catalog.Format(msgs.locale, "helpConnectDevice", map[string]any{"device": device})
+}
+
+// HelpConnectNone says "Connect once from each device, then choose it here."
+// in the language the app shows.
+func HelpConnectNone() string { return In(i18n.Locale()).HelpConnectNone() }
+
+// HelpConnectNone says "Connect once from each device, then choose it here."
+// in the language of msgs.
+func (msgs Messages) HelpConnectNone() string {
+	return Catalog.Format(msgs.locale, "helpConnectNone", nil)
+}
+
+// HelpConnectAllow says "To tell your devices apart, allow DisplayExt to read UU远程's window in Accessibility."
+// in the language the app shows.
+func HelpConnectAllow() string { return In(i18n.Locale()).HelpConnectAllow() }
+
+// HelpConnectAllow says "To tell your devices apart, allow DisplayExt to read UU远程's window in Accessibility."
+// in the language of msgs.
+func (msgs Messages) HelpConnectAllow() string {
+	return Catalog.Format(msgs.locale, "helpConnectAllow", nil)
+}
+
+// ButtonAllow says "Allow…"
+// in the language the app shows.
+func ButtonAllow() string { return In(i18n.Locale()).ButtonAllow() }
+
+// ButtonAllow says "Allow…"
+// in the language of msgs.
+func (msgs Messages) ButtonAllow() string {
+	return Catalog.Format(msgs.locale, "buttonAllow", nil)
+}
+
 // ButtonDelete says "Delete Display…"
 // in the language the app shows.
 func ButtonDelete() string { return In(i18n.Locale()).ButtonDelete() }
@@ -832,6 +934,18 @@ func SummaryUUNotRunning() string { return In(i18n.Locale()).SummaryUUNotRunning
 // in the language of msgs.
 func (msgs Messages) SummaryUUNotRunning() string {
 	return Catalog.Format(msgs.locale, "summaryUUNotRunning", nil)
+}
+
+// SummaryUUOtherDevice says "Follows UU远程 · {device} is connected"
+// in the language the app shows.
+func SummaryUUOtherDevice(device string) string {
+	return In(i18n.Locale()).SummaryUUOtherDevice(device)
+}
+
+// SummaryUUOtherDevice says "Follows UU远程 · {device} is connected"
+// in the language of msgs.
+func (msgs Messages) SummaryUUOtherDevice(device string) string {
+	return Catalog.Format(msgs.locale, "summaryUUOtherDevice", map[string]any{"device": device})
 }
 
 // SummaryUUShowingThis says "Follows UU远程 · showing this display"

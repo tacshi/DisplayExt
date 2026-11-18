@@ -56,8 +56,8 @@ func TestDefaultDevice(t *testing.T) {
 	if a := m.Aspect(false); a != (config.Aspect{W: 4, H: 3}) {
 		t.Errorf("default device landscape aspect = %v, want 4:3", a)
 	}
-	if s, ok := m.Native(false); !ok || s != (config.Size{W: 1376, H: 1032}) {
-		t.Errorf("default device native size = %v, %v", s, ok)
+	if s := m.Sharpest(false); s != (config.Size{W: 1376, H: 1032}) {
+		t.Errorf("default device sharpest size = %v", s)
 	}
 }
 
@@ -71,8 +71,12 @@ func TestPhonePortraitMatchesSnug(t *testing.T) {
 	if len(sizes) == 0 || sizes[0] != (config.Size{W: 540, H: 950}) {
 		t.Errorf("iPhone 17 Pro Max portrait %v sizes %v, want 540×950 first", a, sizes)
 	}
-	if _, ok := m.Native(true); ok {
-		t.Error("phones have no native size")
+	if s := m.Sharpest(true); s != (config.Size{W: 660, H: 1161}) {
+		t.Errorf("iPhone 17 Pro Max sharpest portrait size = %v, want 660×1161", s)
+	}
+	m15, _ := Lookup("Apple iPhone 15 Pro")
+	if s := m15.Sharpest(true); s != (config.Size{W: 590, H: 1006}) {
+		t.Errorf("iPhone 15 Pro sharpest portrait size = %v, want 590×1006", s)
 	}
 	l := m.Aspect(false)
 	if r := float64(l.W) / float64(l.H); r < 1.8 || r > 1.85 {

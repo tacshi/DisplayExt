@@ -20,6 +20,7 @@ type fakeBackend struct {
 	seen     []string
 	trusted  bool
 	asked    bool
+	noWindow bool
 	displays []config.Display
 	wanted   map[string]bool
 	failed   map[string]string
@@ -47,6 +48,7 @@ func (f *fakeBackend) UUScreen() string              { return f.screen }
 func (f *fakeBackend) UUDevice() string              { return f.device }
 func (f *fakeBackend) Devices() []string             { return f.seen }
 func (f *fakeBackend) AccessibilityAllowed() bool    { return f.trusted }
+func (f *fakeBackend) UUWindowClosed() bool          { return f.noWindow }
 func (f *fakeBackend) AllowAccessibility()           { f.asked = true }
 func (f *fakeBackend) Unavailable() string           { return "" }
 func (f *fakeBackend) OpenAtLogin() bool             { return f.login }
@@ -599,5 +601,15 @@ func TestConnectFromChoosesADevice(t *testing.T) {
 	tt.Frame()
 	if s.connectFrom != "" {
 		t.Errorf("Any device kept %q", s.connectFrom)
+	}
+}
+
+func TestConnectFromSaysWhenUUWindowIsClosed(t *testing.T) {
+	f := newFake()
+	f.trusted, f.noWindow = true, true
+	tt := newTester(NewSettings(f))
+	want := "UU远程's window is closed, so DisplayExt can't see which device connected. Keep it open, or minimized in the Dock."
+	if !tt.HasText(want) {
+		t.Errorf("missing %q: %q", want, tt.Texts())
 	}
 }

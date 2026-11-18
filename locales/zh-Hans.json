@@ -79,6 +79,7 @@
   "helpConnectDevice": "仅在 {device} 连接时挂载。",
   "helpConnectNone": "先用每台设备各连接一次，再在这里选择。",
   "helpConnectAllow": "要区分设备，请在“辅助功能”中允许 DisplayExt 读取 UU远程 的窗口。",
+  "helpConnectWindowClosed": "UU远程 的窗口已关闭，DisplayExt 无法看到连接的是哪台设备。请保持窗口打开，或最小化到程序坞。",
   "buttonAllow": "允许…",
 
   "buttonDelete": "删除显示器…",

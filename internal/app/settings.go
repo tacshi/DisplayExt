@@ -26,6 +26,7 @@ type Backend interface {
 	UUDevice() string
 	Devices() []string
 	AccessibilityAllowed() bool
+	UUWindowClosed() bool
 	AllowAccessibility()
 	Unavailable() string
 	SettingsReset() string
@@ -859,6 +860,8 @@ func (s *Settings) connectRow(c *ui.Context, p palette) {
 	}
 	help := locales.HelpConnectAny()
 	switch {
+	case s.b.UUWindowClosed():
+		help = locales.HelpConnectWindowClosed()
 	case s.connectFrom != "":
 		help = locales.HelpConnectDevice(s.connectFrom)
 	case len(s.b.Devices()) == 0:

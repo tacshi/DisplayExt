@@ -41,6 +41,7 @@ type App struct {
 	uuScreen string
 	devices  *uuwindow.Watcher
 	trusted  bool
+	noWindow bool
 
 	tray     *mygo.Tray
 	win      *mygo.Window
@@ -275,6 +276,12 @@ func (a *App) deviceRead(r uuwindow.Reading) {
 	if r.Err != "" {
 		log.Println("UU远程 window:", r.Err)
 	}
+	switch {
+	case r.NoWindow:
+		a.noWindow = true
+	case r.Device != "":
+		a.noWindow = false
+	}
 	changed := false
 	if !r.Trusted {
 		changed = a.sw.SetBlind(true)
@@ -381,6 +388,7 @@ func (a *App) UUScreen() string                { return a.uuScreen }
 func (a *App) UUDevice() string                { return a.sw.Device() }
 func (a *App) Devices() []string               { return a.cfg.Devices }
 func (a *App) AccessibilityAllowed() bool      { return a.trusted }
+func (a *App) UUWindowClosed() bool            { return a.noWindow }
 
 func (a *App) AllowAccessibility() {
 	if !uuwindow.AskForTrust() {

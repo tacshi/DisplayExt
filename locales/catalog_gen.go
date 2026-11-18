@@ -776,6 +776,16 @@ func (msgs Messages) HelpConnectAllow() string {
 	return Catalog.Format(msgs.locale, "helpConnectAllow", nil)
 }
 
+// HelpConnectWindowClosed says "UU远程's window is closed, so DisplayExt can't see which device connected. Keep it open, or minimized in the Dock."
+// in the language the app shows.
+func HelpConnectWindowClosed() string { return In(i18n.Locale()).HelpConnectWindowClosed() }
+
+// HelpConnectWindowClosed says "UU远程's window is closed, so DisplayExt can't see which device connected. Keep it open, or minimized in the Dock."
+// in the language of msgs.
+func (msgs Messages) HelpConnectWindowClosed() string {
+	return Catalog.Format(msgs.locale, "helpConnectWindowClosed", nil)
+}
+
 // ButtonAllow says "Allow…"
 // in the language the app shows.
 func ButtonAllow() string { return In(i18n.Locale()).ButtonAllow() }

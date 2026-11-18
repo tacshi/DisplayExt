@@ -43,7 +43,7 @@ func TestWatcherReports(t *testing.T) {
 		t.Errorf("untrusted sample %+v", r)
 	}
 	trusted = true
-	if r := w.sample(); !r.Trusted || r.Err == "" || r.Device != "" {
+	if r := w.sample(); !r.Trusted || !r.NoWindow || r.Err == "" || r.Device != "" {
 		t.Errorf("no windows sample %+v", r)
 	}
 

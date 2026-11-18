@@ -8,9 +8,10 @@ import (
 )
 
 type Reading struct {
-	Trusted bool
-	Device  string
-	Err     string
+	Trusted  bool
+	Device   string
+	NoWindow bool
+	Err      string
 }
 
 type Watcher struct {
@@ -72,6 +73,8 @@ func (w *Watcher) sample() Reading {
 	switch {
 	case errors.Is(err, ErrNotTrusted):
 		r.Trusted = false
+	case errors.Is(err, ErrNoWindows):
+		r.NoWindow, r.Err = true, err.Error()
 	case err != nil:
 		r.Err = err.Error()
 	default:

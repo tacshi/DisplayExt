@@ -594,8 +594,12 @@ func (s *Settings) hero(c *ui.Context, p palette, d config.Display) {
 		ui.Row(c).Gap(20).AlignItems(ui.Center).Children(func() {
 			preview(c, p, d, mounted)
 			ui.Column(c).Grow(1).Gap(7).Children(func() {
-				ui.Text(c, s.saved.Name).FontSize(19).Bold().SingleLine()
-				if m, ok := devices.Lookup(s.saved.Device); ok {
+				name := d.Name
+				if name == "" {
+					name = s.saved.Name
+				}
+				ui.Text(c, name).FontSize(19).Bold().SingleLine()
+				if m, ok := devices.Lookup(d.Device); ok && modelTitle(m) != name {
 					ui.Text(c, modelTitle(m)).FontSize(12).TextColor(t.TextMuted).SingleLine().MarginY(-3)
 				}
 				switch {
@@ -738,20 +742,39 @@ func row(c *ui.Context, p palette, first bool, label, help string, control func(
 
 func preview(c *ui.Context, p palette, d config.Display, mounted bool) {
 	t := c.Theme()
-	w, h := fit(d.AspectW, d.AspectH, 156, 106)
-	screen := ui.Column(c).Size(w, h).Radius(10).Gap(2).Center()
-	if mounted {
-		screen = screen.Gradient(p.screenTop, p.screenBottom, 160).Border(4, p.frame)
-	} else {
-		screen = screen.Background(p.ghost).Border(2.5, p.frame).BorderStyle(ui.BorderDashed)
+	maxH := float32(106)
+	if d.AspectW < d.AspectH {
+		maxH = 132
 	}
-	screen.Children(func() {
-		ui.Text(c, fmt.Sprintf("%d × %d", d.Width, d.Height)).FontSize(13).FontWeight(600).SingleLine()
-		detail := fmt.Sprintf("%d Hz", d.RefreshHz)
-		if d.HiDPI {
-			detail = "HiDPI · " + detail
+	w, h := fit(d.AspectW, d.AspectH, 156, maxH)
+	narrow := w < 120
+	ui.Column(c).Width(156).AlignItems(ui.Center).Children(func() {
+		screen := ui.Column(c).Size(w, h).Radius(10).Gap(2).Center()
+		if mounted {
+			screen = screen.Gradient(p.screenTop, p.screenBottom, 160).Border(4, p.frame)
+		} else {
+			screen = screen.Background(p.ghost).Border(2.5, p.frame).BorderStyle(ui.BorderDashed)
 		}
-		ui.Text(c, detail).FontSize(11).TextColor(t.TextMuted).SingleLine()
+		screen.Children(func() {
+			size := func(text string) { ui.Text(c, text).FontSize(13).FontWeight(600).SingleLine() }
+			detail := func(text string) { ui.Text(c, text).FontSize(11).TextColor(t.TextMuted).SingleLine() }
+			hz := fmt.Sprintf("%d Hz", d.RefreshHz)
+			switch {
+			case narrow:
+				size(strconv.Itoa(d.Width))
+				size("× " + strconv.Itoa(d.Height))
+				if d.HiDPI {
+					detail("HiDPI")
+				}
+				detail(hz)
+			case d.HiDPI:
+				size(fmt.Sprintf("%d × %d", d.Width, d.Height))
+				detail("HiDPI · " + hz)
+			default:
+				size(fmt.Sprintf("%d × %d", d.Width, d.Height))
+				detail(hz)
+			}
+		})
 	})
 }
 

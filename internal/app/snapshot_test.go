@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"displayext/internal/devices"
+
 	"github.com/egoist/mygo/i18n"
 	"github.com/egoist/mygo/ui"
 )
@@ -21,13 +23,15 @@ func TestSnapshot(t *testing.T) {
 		mounted bool
 		general bool
 		picker  bool
+		phone   bool
 	}{
-		{"settings-light", false, true, false, false},
-		{"settings-dark", true, true, false, false},
-		{"settings-unmounted", false, false, false, false},
-		{"settings-picker", false, false, false, true},
-		{"general-light", false, false, true, false},
-		{"general-dark", true, false, true, false},
+		{"settings-light", false, true, false, false, false},
+		{"settings-dark", true, true, false, false, false},
+		{"settings-unmounted", false, false, false, false, false},
+		{"settings-picker", false, false, false, true, false},
+		{"settings-phone", false, false, false, false, true},
+		{"general-light", false, false, true, false, false},
+		{"general-dark", true, false, true, false, false},
 	}
 	defer i18n.SetLocaleFunc(func() string { return "" })
 	for _, lang := range []string{"en", "zh-Hans"} {
@@ -40,6 +44,10 @@ func TestSnapshot(t *testing.T) {
 				s.showGeneral()
 			}
 			s.pickerOpen = shot.picker
+			if shot.phone {
+				m, _ := devices.Lookup("Apple iPhone 15 Pro")
+				s.chooseDevice(m)
+			}
 			tt := ui.NewTesterWith(s.View, 820, 830, ui.TesterOptions{Dark: shot.dark})
 			tt.SetLocale(lang)
 			tt.SetScale(2)

@@ -12,6 +12,7 @@ Renders the images the READMEs show into docs/images:
   settings-light.png         the settings window, light, a display mounted
   settings-dark.png          the same in dark mode
   settings-unmounted.png     a display that is not mounted
+  settings-picker.png        the device picker, open
   general-light.png          the General page, light
   general-dark.png           the General page, dark
 
@@ -54,7 +55,7 @@ frame() {
 		-background none -layers merge +repage "$out"
 }
 
-for name in settings-light settings-dark settings-unmounted general-light general-dark; do
+for name in settings-light settings-dark settings-unmounted settings-picker general-light general-dark; do
 	dark=false
 	if [[ "$name" == *-dark ]]; then dark=true; fi
 	frame "$RAW/$name.png" "$OUT/$name.png" "$dark"

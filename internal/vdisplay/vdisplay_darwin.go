@@ -9,8 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"displayext/internal/config"
-
 	"github.com/ebitengine/purego"
 	"github.com/go-macos/objc"
 )
@@ -50,6 +48,8 @@ var (
 	cgDisplayModeGetPixelWidth    func(mode uintptr) uint64
 	cgDisplayModeGetPixelHeight   func(mode uintptr) uint64
 	cgDisplayModeGetRefreshRate   func(mode uintptr) float64
+	cgDisplayModeGetIOFlags       func(mode uintptr) uint32
+	cgDisplayModeUsableForDesktop func(mode uintptr) bool
 	cgDisplayVendorNumber         func(id uint32) uint32
 	cgBeginDisplayConfiguration   func(config *uintptr) int32
 	cgConfigureDisplayWithMode    func(config uintptr, id uint32, mode uintptr, options uintptr) int32
@@ -105,6 +105,8 @@ func load() error {
 		purego.RegisterLibFunc(&cgDisplayModeGetPixelWidth, cg, "CGDisplayModeGetPixelWidth")
 		purego.RegisterLibFunc(&cgDisplayModeGetPixelHeight, cg, "CGDisplayModeGetPixelHeight")
 		purego.RegisterLibFunc(&cgDisplayModeGetRefreshRate, cg, "CGDisplayModeGetRefreshRate")
+		purego.RegisterLibFunc(&cgDisplayModeGetIOFlags, cg, "CGDisplayModeGetIOFlags")
+		purego.RegisterLibFunc(&cgDisplayModeUsableForDesktop, cg, "CGDisplayModeIsUsableForDesktopGUI")
 		purego.RegisterLibFunc(&cgDisplayVendorNumber, cg, "CGDisplayVendorNumber")
 		purego.RegisterLibFunc(&cgBeginDisplayConfiguration, cg, "CGBeginDisplayConfiguration")
 		purego.RegisterLibFunc(&cgConfigureDisplayWithMode, cg, "CGConfigureDisplayWithDisplayMode")
@@ -357,8 +359,12 @@ func create(s Spec, o Options) (*Display, error) {
 		}
 		defer desc.Send(objc.Sel("release"))
 		desc.Send(objc.Sel("setName:"), objc.NSString(s.Name))
-		desc.Send(objc.Sel("setMaxPixelsWide:"), uint32(s.PixelsW))
-		desc.Send(objc.Sel("setMaxPixelsHigh:"), uint32(s.PixelsH))
+		maxW, maxH := s.PixelsW, s.PixelsH
+		if s.MaxPixelsW > 0 && s.MaxPixelsH > 0 {
+			maxW, maxH = s.MaxPixelsW, s.MaxPixelsH
+		}
+		desc.Send(objc.Sel("setMaxPixelsWide:"), uint32(maxW))
+		desc.Send(objc.Sel("setMaxPixelsHigh:"), uint32(maxH))
 		objc.Send[objc.ID](desc, objc.Sel("setSizeInMillimeters:"), cgSize{s.SizeMMW, s.SizeMMH})
 		desc.Send(objc.Sel("setVendorID:"), uint32(VendorID))
 		desc.Send(objc.Sel("setProductID:"), uint32(ProductID))
@@ -381,29 +387,8 @@ func create(s Spec, o Options) (*Display, error) {
 			return
 		}
 
-		settings := objc.ClassID("CGVirtualDisplaySettings").Send(objc.Sel("alloc")).Send(objc.Sel("init"))
+		settings := newSettings(s, o)
 		defer settings.Send(objc.Sel("release"))
-		modes := objc.ClassID("NSMutableArray").Send(objc.Sel("array"))
-		sizes := append([]config.Size{{W: s.PixelsW, H: s.PixelsH}}, s.Extra...)
-		for _, m := range slices.Compact(sizes) {
-			alloc := objc.ClassID("CGVirtualDisplayMode").Send(objc.Sel("alloc"))
-			var mode objc.ID
-			if o.TransferFunction > 0 {
-				mode = objc.Send[objc.ID](alloc, objc.Sel("initWithWidth:height:refreshRate:transferFunction:"),
-					uint32(m.W), uint32(m.H), float64(s.RefreshHz), uint32(o.TransferFunction-1))
-			} else {
-				mode = objc.Send[objc.ID](alloc, objc.Sel("initWithWidth:height:refreshRate:"),
-					uint32(m.W), uint32(m.H), float64(s.RefreshHz))
-			}
-			modes.Send(objc.Sel("addObject:"), mode)
-			mode.Send(objc.Sel("release"))
-		}
-		settings.Send(objc.Sel("setModes:"), modes)
-		var hidpi uint32
-		if s.HiDPI {
-			hidpi = 1
-		}
-		settings.Send(objc.Sel("setHiDPI:"), hidpi)
 		if !objc.Send[bool](disp, objc.Sel("applySettings:"), settings) {
 			disp.Send(objc.Sel("release"))
 			err = fmt.Errorf("vdisplay: the WindowServer rejected the settings for a %d×%d display", s.PixelsW, s.PixelsH)
@@ -412,6 +397,49 @@ func create(s Spec, o Options) (*Display, error) {
 		d = &Display{obj: disp, id: objc.Send[uint32](disp, objc.Sel("displayID"))}
 	})
 	return d, err
+}
+
+func newSettings(s Spec, o Options) objc.ID {
+	settings := objc.ClassID("CGVirtualDisplaySettings").Send(objc.Sel("alloc")).Send(objc.Sel("init"))
+	modes := objc.ClassID("NSMutableArray").Send(objc.Sel("array"))
+	for _, m := range s.Modes() {
+		alloc := objc.ClassID("CGVirtualDisplayMode").Send(objc.Sel("alloc"))
+		var mode objc.ID
+		if o.TransferFunction > 0 {
+			mode = objc.Send[objc.ID](alloc, objc.Sel("initWithWidth:height:refreshRate:transferFunction:"),
+				uint32(m.W), uint32(m.H), float64(s.RefreshHz), uint32(o.TransferFunction-1))
+		} else {
+			mode = objc.Send[objc.ID](alloc, objc.Sel("initWithWidth:height:refreshRate:"),
+				uint32(m.W), uint32(m.H), float64(s.RefreshHz))
+		}
+		modes.Send(objc.Sel("addObject:"), mode)
+		mode.Send(objc.Sel("release"))
+	}
+	settings.Send(objc.Sel("setModes:"), modes)
+	var hidpi uint32
+	if s.HiDPI {
+		hidpi = 1
+	}
+	settings.Send(objc.Sel("setHiDPI:"), hidpi)
+	return settings
+}
+
+func (d *Display) Reapply(s Spec, o Options) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.obj == 0 {
+		return fmt.Errorf("vdisplay: display %d is closed", d.id)
+	}
+	var ok bool
+	objc.AutoreleasePool(func() {
+		settings := newSettings(s, o)
+		defer settings.Send(objc.Sel("release"))
+		ok = objc.Send[bool](d.obj, objc.Sel("applySettings:"), settings)
+	})
+	if !ok {
+		return fmt.Errorf("vdisplay: the WindowServer rejected new settings for display %d", d.id)
+	}
+	return nil
 }
 
 func waitActive(id uint32, timeout time.Duration) bool {
@@ -443,11 +471,7 @@ func ActiveDisplays() []uint32 {
 func IsActive(id uint32) bool { return slices.Contains(ActiveDisplays(), id) }
 
 func applyMode(id uint32, s Spec) error {
-	scale := 1
-	if s.HiDPI {
-		scale = 2
-	}
-	want := Mode{PointsW: s.PointsW, PointsH: s.PointsH, PixelsW: s.PointsW * scale, PixelsH: s.PointsH * scale, RefreshHz: float64(s.RefreshHz)}
+	want := s.Want()
 	if cur, ok := CurrentMode(id); ok && cur.Same(want) {
 		return nil
 	}
@@ -509,4 +533,57 @@ func setMode(id uint32, match func(Mode) bool, hz float64) error {
 		return fmt.Errorf("CGCompleteDisplayConfiguration: CGError %d", e)
 	}
 	return nil
+}
+
+func ScreenName(id uint32) string {
+	if load() != nil || objc.Load(objc.AppKit) != nil {
+		return ""
+	}
+	var name string
+	objc.AutoreleasePool(func() {
+		screens := objc.ClassID("NSScreen").Send(objc.Sel("screens"))
+		key := objc.NSString("NSScreenNumber")
+		n := int(screens.Send(objc.Sel("count")))
+		for i := range n {
+			screen := screens.Send(objc.Sel("objectAtIndex:"), i)
+			number := screen.Send(objc.Sel("deviceDescription")).Send(objc.Sel("objectForKey:"), key)
+			if number == 0 || uint32(number.Send(objc.Sel("unsignedIntValue"))) != id {
+				continue
+			}
+			if screen.Send(objc.Sel("respondsToSelector:"), objc.Sel("localizedName")) != 0 {
+				name = objc.GoString(screen.Send(objc.Sel("localizedName")))
+			}
+			return
+		}
+	})
+	return name
+}
+
+type ModeInfo struct {
+	Mode
+	IOFlags uint32
+	Usable  bool
+}
+
+func ListModes(id uint32) []ModeInfo {
+	if load() != nil {
+		return nil
+	}
+	var out []ModeInfo
+	objc.AutoreleasePool(func() {
+		opts := objc.ClassID("NSDictionary").Send(objc.Sel("dictionaryWithObject:forKey:"),
+			objc.ClassID("NSNumber").Send(objc.Sel("numberWithBool:"), true),
+			objc.NSString("kCGDisplayShowDuplicateLowResolutionModes"))
+		list := cgDisplayCopyAllDisplayModes(id, opts)
+		if list == 0 {
+			return
+		}
+		defer list.Send(objc.Sel("release"))
+		n := int(list.Send(objc.Sel("count")))
+		for i := range n {
+			m := uintptr(list.Send(objc.Sel("objectAtIndex:"), i))
+			out = append(out, ModeInfo{Mode: modeOf(m), IOFlags: cgDisplayModeGetIOFlags(m), Usable: cgDisplayModeUsableForDesktop(m)})
+		}
+	})
+	return out
 }

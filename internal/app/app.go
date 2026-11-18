@@ -15,7 +15,9 @@ import (
 	"displayext/internal/autoswitch"
 	"displayext/internal/config"
 	"displayext/internal/manager"
+	"displayext/internal/uucapture"
 	"displayext/internal/uudetect"
+	"displayext/internal/uuwindow"
 	"displayext/internal/vdisplay"
 	"displayext/locales"
 
@@ -33,9 +35,14 @@ type App struct {
 	configKept  string
 	unavailable string
 
-	mgr *manager.Manager
-	sw  *autoswitch.Switcher
-	uu  uudetect.State
+	mgr      *manager.Manager
+	sw       *autoswitch.Switcher
+	uu       uudetect.Status
+	uuScreen string
+	devices  *uuwindow.Watcher
+	trusted  bool
+	noWindow bool
+	reopened bool
 
 	tray     *mygo.Tray
 	win      *mygo.Window
@@ -162,8 +169,24 @@ func (a *App) ready() {
 		Assertion: a.cfg.UU.Assertion,
 		Grace:     time.Duration(a.cfg.UU.GraceSeconds) * time.Second,
 	}
-	go uudetect.Watch(ctx, rule, 2*time.Second,
-		func(st uudetect.State) { mygo.RunOnMain(func() { a.uuChanged(st) }) },
+	capture := uucapture.NewWatcher(func() int32 {
+		snap, err := uudetect.TakeSnapshot(rule.Process)
+		if err != nil {
+			return 0
+		}
+		return snap.Server()
+	}, log.Printf)
+	go capture.Run(ctx)
+	a.devices = uuwindow.NewWatcher(func() int32 {
+		snap, err := uudetect.TakeSnapshot(uuwindow.Process)
+		if err != nil {
+			return 0
+		}
+		return snap.Server()
+	})
+	go a.devices.Run(ctx, 1500*time.Millisecond, func(r uuwindow.Reading) { mygo.RunOnMain(func() { a.deviceRead(r) }) })
+	go uudetect.Watch(ctx, rule, 2*time.Second, capture,
+		func(st uudetect.Status) { mygo.RunOnMain(func() { a.uuChanged(st) }) },
 		func(err error) { log.Println("uudetect:", err) })
 
 	a.startUpdates()
@@ -209,14 +232,95 @@ func (a *App) changed() {
 	}
 }
 
-func (a *App) uuChanged(st uudetect.State) {
-	log.Println("UU远程:", st)
+func (a *App) uuChanged(st uudetect.Status) {
 	a.uu = st
-	if a.sw.SetConnected(st == uudetect.Connected) {
+	a.uuScreen = a.screenName(st.Showing)
+	if st.Showing != 0 {
+		log.Printf("UU远程: %s, showing display %d (%s)", st.State, st.Showing, a.uuScreen)
+	} else {
+		log.Println("UU远程:", st.State)
+	}
+	connected := st.State == uudetect.Connected
+	a.devices.SetActive(connected)
+	if a.sw.SetConnected(connected) {
+		if connected {
+			a.waitForDevice()
+		}
 		a.apply()
 		return
 	}
 	a.changed()
+}
+
+const deviceWait = 3 * time.Second
+
+func (a *App) waitForDevice() {
+	if !a.trusted {
+		a.sw.SetBlind(a.guess())
+		return
+	}
+	time.AfterFunc(deviceWait, func() {
+		mygo.RunOnMain(func() {
+			guess := a.guess()
+			if a.sw.Connected() && a.sw.Device() == "" && a.sw.SetBlind(guess) {
+				if guess != "" {
+					log.Printf("UU远程: could not tell which device connected within %s; assuming %s, the last one", deviceWait, guess)
+				} else {
+					log.Printf("UU远程: could not tell which device connected within %s; mounting every display that follows UU远程", deviceWait)
+				}
+				a.apply()
+			}
+		})
+	})
+}
+
+func (a *App) deviceRead(r uuwindow.Reading) {
+	if r.Trusted != a.trusted {
+		log.Printf("Accessibility allowed: %v", r.Trusted)
+	}
+	a.trusted = r.Trusted
+	if r.Err != "" {
+		log.Println("UU远程 window:", r.Err)
+	}
+	if r.Reopened && !a.reopened {
+		log.Println("UU远程 window: it was closed; reopened it in the background to see which device connected, then minimized it")
+	}
+	a.reopened = r.Reopened
+	switch {
+	case r.NoWindow:
+		a.noWindow = true
+	case r.Device != "":
+		a.noWindow = false
+	}
+	changed := false
+	if !r.Trusted {
+		changed = a.sw.SetBlind(a.guess())
+	}
+	if r.Device != "" {
+		if a.cfg.SawDevice(r.Device) {
+			_ = a.saveConfig()
+		}
+		if a.sw.SetDevice(r.Device) {
+			log.Printf("UU远程: connected from %s", r.Device)
+			changed = true
+		}
+	}
+	if changed {
+		a.apply()
+		return
+	}
+	a.changed()
+}
+
+func (a *App) guess() string {
+	for _, name := range a.cfg.Devices {
+		for _, d := range a.cfg.Displays {
+			if d.Trigger == config.TriggerUU && d.ConnectFrom == name {
+				return name
+			}
+		}
+	}
+	return ""
 }
 
 func (a *App) showSettings() {
@@ -235,7 +339,7 @@ func (a *App) saveConfig() error {
 
 func (a *App) menu() *mygo.Menu {
 	items := []*mygo.MenuItem{
-		{Label: locales.MenuUUStatus(uuLabel(a.uu)), Disabled: true},
+		{Label: locales.MenuUUStatus(uuLabel(a.uu, a.sw.Device(), a.uuScreen)), Disabled: true},
 		mygo.Separator(),
 	}
 	if a.unavailable != "" {
@@ -289,6 +393,8 @@ func subtitle(d config.Display, st manager.Status) string {
 		return locales.Working()
 	case st.Err != "":
 		return locales.MenuError(st.Err)
+	case d.Trigger == config.TriggerUU && d.ConnectFrom != "":
+		return locales.MenuFollowsDevice(d.ConnectFrom)
 	case d.Trigger == config.TriggerUU:
 		return locales.MenuFollowsUU()
 	}
@@ -298,15 +404,47 @@ func subtitle(d config.Display, st manager.Status) string {
 func (a *App) Displays() []config.Display      { return a.cfg.Displays }
 func (a *App) Status(id string) manager.Status { return a.mgr.Status(id) }
 func (a *App) SettingsReset() string           { return a.configKept }
-func (a *App) UUState() uudetect.State         { return a.uu }
-func (a *App) Unavailable() string             { return a.unavailable }
-func (a *App) Version() string                 { return mygo.App.Version() }
-func (a *App) LogFile() string                 { return LogPath(a.name) }
-func (a *App) RevealLog()                      { mygo.Shell.ShowItemInFolder(LogPath(a.name)) }
-func (a *App) Language() string                { return mygo.App.ChosenLocale() }
-func (a *App) SetLanguage(tag string)          { mygo.App.SetLocale(tag) }
-func (a *App) OpenAtLogin() bool               { return mygo.App.OpenAtLogin() }
-func (a *App) SetOpenAtLogin(on bool) error    { return mygo.App.SetOpenAtLogin(on) }
+func (a *App) UUStatus() uudetect.Status       { return a.uu }
+func (a *App) UUScreen() string                { return a.uuScreen }
+func (a *App) UUDevice() string                { return a.sw.Device() }
+func (a *App) Devices() []string               { return a.cfg.Devices }
+func (a *App) AccessibilityAllowed() bool      { return a.trusted }
+func (a *App) UUWindowClosed() bool            { return a.noWindow }
+
+func (a *App) AllowAccessibility() {
+	if !uuwindow.AskForTrust() {
+		if err := mygo.Shell.OpenExternal(accessibilitySettings); err != nil {
+			log.Println("opening Accessibility settings:", err)
+		}
+	}
+	a.devices.Wake()
+}
+
+const accessibilitySettings = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+
+func (a *App) Unavailable() string          { return a.unavailable }
+func (a *App) Version() string              { return mygo.App.Version() }
+func (a *App) LogFile() string              { return LogPath(a.name) }
+func (a *App) RevealLog()                   { mygo.Shell.ShowItemInFolder(LogPath(a.name)) }
+func (a *App) Language() string             { return mygo.App.ChosenLocale() }
+func (a *App) SetLanguage(tag string)       { mygo.App.SetLocale(tag) }
+func (a *App) OpenAtLogin() bool            { return mygo.App.OpenAtLogin() }
+func (a *App) SetOpenAtLogin(on bool) error { return mygo.App.SetOpenAtLogin(on) }
+
+func (a *App) screenName(id uint32) string {
+	if id == 0 {
+		return ""
+	}
+	for _, d := range a.cfg.Displays {
+		if a.mgr.Status(d.ID).DisplayID == id {
+			return d.Name
+		}
+	}
+	if name := vdisplay.ScreenName(id); name != "" {
+		return name
+	}
+	return locales.ScreenNumber(int(id))
+}
 
 func (a *App) Wanted(id string) bool {
 	d, ok := a.cfg.Display(id)
@@ -318,7 +456,7 @@ func (a *App) Save(d config.Display) error {
 		return err
 	}
 	if old, ok := a.cfg.Display(d.ID); ok {
-		if old.Trigger != d.Trigger {
+		if old.Trigger != d.Trigger || old.ConnectFrom != d.ConnectFrom {
 			a.sw.Forget(d.ID)
 		}
 		d.Mounted = old.Mounted

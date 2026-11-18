@@ -1,7 +1,10 @@
 package app
 
 import (
+	"strings"
+
 	"displayext/internal/config"
+	"displayext/internal/devices"
 	"displayext/internal/uudetect"
 	"displayext/locales"
 
@@ -19,9 +22,17 @@ func languageLabel(tag string) string {
 	return i18n.Autonym(tag)
 }
 
-func uuLabel(st uudetect.State) string {
-	switch st {
+func uuLabel(st uudetect.Status, device, screen string) string {
+	switch st.State {
 	case uudetect.Connected:
+		switch {
+		case device != "" && screen != "":
+			return locales.UuConnectedFromShowing(device, screen)
+		case device != "":
+			return locales.UuConnectedFrom(device)
+		case screen != "":
+			return locales.UuConnectedShowing(screen)
+		}
 		return locales.UuConnected()
 	case uudetect.Idle:
 		return locales.UuIdle()
@@ -64,26 +75,6 @@ func ratioKeyLabel(key string) string {
 	return key
 }
 
-func ratioOptions() []string {
-	out := make([]string, 0, len(config.Presets)+1)
-	for _, a := range config.Presets {
-		out = append(out, ratioLabel(a))
-	}
-	return append(out, locales.RatioCustom())
-}
-
-func ratioKeyOf(label string) (string, bool) {
-	if label == locales.RatioCustom() {
-		return customRatio, true
-	}
-	for _, a := range config.Presets {
-		if ratioLabel(a) == label {
-			return a.String(), true
-		}
-	}
-	return "", false
-}
-
 func languageOptions() []string {
 	out := make([]string, len(languages))
 	for i, tag := range languages {
@@ -111,6 +102,8 @@ func problemText(d config.Display) string {
 		return locales.ProblemAspect(config.MaxRatio)
 	case config.BadSize:
 		return locales.ProblemSize(config.MinPoints, config.MinShortPoints, config.MaxPoints)
+	case config.BadHiDPI:
+		return locales.ProblemHiDPI(config.MinHiDPILong, config.MinHiDPIShort)
 	case config.BadRefresh:
 		return locales.ProblemRefresh(config.MinRefresh, config.MaxRefresh)
 	}
@@ -122,4 +115,38 @@ func triggerHelp(t config.Trigger) string {
 		return locales.HelpTriggerUU()
 	}
 	return locales.HelpTriggerManual()
+}
+
+func brandLabel(name, zh string) string {
+	if zh != "" && strings.HasPrefix(i18n.Locale(), "zh") {
+		return zh
+	}
+	return name
+}
+
+func modelName(m devices.Model) string {
+	switch m.Fold {
+	case devices.Inner:
+		return locales.FoldInner(m.Name)
+	case devices.Outer:
+		return locales.FoldOuter(m.Name)
+	}
+	return m.Name
+}
+
+func modelTitle(m devices.Model) string {
+	if m.Brand == "Apple" {
+		return modelName(m)
+	}
+	return brandLabel(m.Brand, m.BrandZh) + " " + modelName(m)
+}
+
+func deviceHelp(m devices.Model, ok bool) string {
+	switch {
+	case !ok:
+		return locales.HelpDeviceOther()
+	case m.Kind == devices.Phone:
+		return locales.HelpDevicePhone()
+	}
+	return locales.HelpDeviceTablet()
 }

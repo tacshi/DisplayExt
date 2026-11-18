@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 	"uuid"
@@ -35,8 +36,9 @@ const (
 var ErrDamaged = errors.New("the settings file is damaged")
 
 type Display struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Device string `json:"device,omitzero"`
 
 	AspectW int `json:"aspectW"`
 	AspectH int `json:"aspectH"`
@@ -49,7 +51,8 @@ type Display struct {
 	Serial    uint32  `json:"serial"`
 	Trigger   Trigger `json:"trigger"`
 
-	ScreensOff bool `json:"screensOff,omitzero"`
+	ScreensOff  bool   `json:"screensOff,omitzero"`
+	ConnectFrom string `json:"connectFrom,omitzero"`
 
 	Mounted bool `json:"mounted,omitzero"`
 }
@@ -64,6 +67,21 @@ type UURule struct {
 type Config struct {
 	Displays []Display `json:"displays"`
 	UU       UURule    `json:"uu"`
+	Devices  []string  `json:"devices,omitzero"`
+}
+
+const MaxDevices = 8
+
+func (c *Config) SawDevice(name string) bool {
+	if name == "" || (len(c.Devices) > 0 && c.Devices[0] == name) {
+		return false
+	}
+	c.Devices = slices.DeleteFunc(c.Devices, func(d string) bool { return d == name })
+	c.Devices = append([]string{name}, c.Devices...)
+	if len(c.Devices) > MaxDevices {
+		c.Devices = c.Devices[:MaxDevices]
+	}
+	return true
 }
 
 func DefaultUURule() UURule {
@@ -74,8 +92,11 @@ func DefaultUURule() UURule {
 	}
 }
 
+const DefaultDevice = "Apple iPad Pro 13-inch (M5)"
+
 func Default() Config {
 	ipad := NewDisplay("iPad", Presets[0])
+	ipad.Device = DefaultDevice
 	ipad.Width, ipad.Height = 2048, 1536
 	ipad.Trigger = TriggerUU
 	return Config{Displays: []Display{ipad}, UU: DefaultUURule()}
@@ -126,6 +147,7 @@ const (
 	BadName
 	BadAspect
 	BadSize
+	BadHiDPI
 	BadRefresh
 	BadSerial
 	BadTrigger
@@ -146,6 +168,8 @@ func (d Display) Check() Problem {
 		return BadAspect
 	case !sizeOK(d.Width, d.Height):
 		return BadSize
+	case d.HiDPI && !HiDPIOK(d.Width, d.Height):
+		return BadHiDPI
 	case d.RefreshHz < MinRefresh || d.RefreshHz > MaxRefresh:
 		return BadRefresh
 	case d.Serial == 0:
@@ -167,6 +191,9 @@ func (d Display) Validate() error {
 	case BadSize:
 		return fmt.Errorf("size %d×%d is not at least %d×%d points, either way round, with no side over %d",
 			d.Width, d.Height, MinPoints, MinShortPoints, MaxPoints)
+	case BadHiDPI:
+		return fmt.Errorf("HiDPI needs at least %d×%d points, either way round, not %d×%d",
+			MinHiDPILong, MinHiDPIShort, d.Width, d.Height)
 	case BadRefresh:
 		return fmt.Errorf("refresh rate %d Hz is outside %d–%d Hz", d.RefreshHz, MinRefresh, MaxRefresh)
 	case BadSerial:

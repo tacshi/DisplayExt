@@ -3,11 +3,13 @@ package app
 import (
 	"fmt"
 	"math"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 
 	"displayext/internal/config"
+	"displayext/internal/devices"
 	"displayext/internal/manager"
 	"displayext/internal/uudetect"
 	"displayext/locales"
@@ -19,7 +21,13 @@ type Backend interface {
 	Displays() []config.Display
 	Status(id string) manager.Status
 	Wanted(id string) bool
-	UUState() uudetect.State
+	UUStatus() uudetect.Status
+	UUScreen() string
+	UUDevice() string
+	Devices() []string
+	AccessibilityAllowed() bool
+	UUWindowClosed() bool
+	AllowAccessibility()
 	Unavailable() string
 	SettingsReset() string
 
@@ -54,12 +62,24 @@ type Settings struct {
 	saved   config.Display
 	draft   config.Display
 
+	device           string
 	ratioKey         string
-	ratio            string
+	orientation      int
 	customW, customH float64
-	size             string
+	size             config.Size
+	sizeChoice       string
+	sizeShown        string
 	hz               float64
 	trigger          int
+	autoName         bool
+	connectFrom      string
+	connectChoice    string
+	connectShown     string
+
+	pickerOpen bool
+	query      string
+	reveal     bool
+	reselect   bool
 
 	login         bool
 	loginErr      string
@@ -67,6 +87,11 @@ type Settings struct {
 	saveErr       string
 	confirmDelete bool
 }
+
+const (
+	landscape = 0
+	portrait  = 1
+)
 
 func NewSettings(b Backend) *Settings {
 	s := &Settings{b: b, login: b.OpenAtLogin()}
@@ -124,10 +149,23 @@ func (s *Settings) syncPick() {
 }
 
 func (s *Settings) syncChoices() {
-	if key, ok := ratioKeyOf(s.ratio); ok {
-		s.ratioKey = key
+	if s.sizeChoice != s.sizeShown {
+		for _, sz := range s.sizeChoices() {
+			if s.sizeLabel(sz) == s.sizeChoice {
+				s.size = sz
+			}
+		}
 	}
-	s.ratio = ratioKeyLabel(s.ratioKey)
+	s.sizeChoice = s.sizeLabel(s.size)
+	s.sizeShown = s.sizeChoice
+	if s.connectChoice != s.connectShown {
+		s.connectFrom = ""
+		if s.connectChoice != locales.ConnectAny() {
+			s.connectFrom = s.connectChoice
+		}
+	}
+	s.connectChoice = connectLabel(s.connectFrom)
+	s.connectShown = s.connectChoice
 	if tag, ok := languageOf(s.language); ok && tag != s.b.Language() {
 		s.b.SetLanguage(tag)
 	}
@@ -135,74 +173,172 @@ func (s *Settings) syncChoices() {
 }
 
 func (s *Settings) load(d config.Display) {
+	a := d.AspectOf()
+	s.orientation = landscape
+	if a.W < a.H {
+		s.orientation = portrait
+	}
+	s.device = ""
+	if m, ok := devices.Lookup(d.Device); ok && m.Aspect(s.orientation == portrait) == a {
+		s.device = d.Device
+	} else {
+		d.Device = ""
+	}
 	s.sel, s.pick, s.general, s.saved, s.draft = d.ID, d.ID, false, d, d
 	s.saveErr = ""
+	s.pickerOpen, s.query = false, ""
 	s.ratioKey = customRatio
-	for _, a := range config.Presets {
-		if a.W == d.AspectW && a.H == d.AspectH {
-			s.ratioKey = a.String()
+	for _, p := range config.Presets {
+		if p == a || (config.Aspect{W: p.H, H: p.W}) == a {
+			s.ratioKey = p.String()
 		}
 	}
-	s.ratio = ratioKeyLabel(s.ratioKey)
 	s.customW, s.customH = float64(d.AspectW), float64(d.AspectH)
-	s.size = config.Size{W: d.Width, H: d.Height}.String()
+	s.size = config.Size{W: d.Width, H: d.Height}
+	s.sizeChoice = s.sizeLabel(s.size)
+	s.sizeShown = s.sizeChoice
 	s.hz = float64(d.RefreshHz)
 	s.trigger = max(0, slices.Index(triggers, d.Trigger))
+	s.connectFrom = d.ConnectFrom
+	s.connectChoice = connectLabel(s.connectFrom)
+	s.connectShown = s.connectChoice
+	s.autoName = isAutoName(d.Name, d.Device)
 }
 
+func (s *Settings) model() (devices.Model, bool) { return devices.Lookup(s.device) }
+
 func (s *Settings) aspect() config.Aspect {
+	if m, ok := s.model(); ok {
+		return m.Aspect(s.orientation == portrait)
+	}
+	if s.ratioKey == customRatio {
+		return config.Aspect{W: int(math.Round(s.customW)), H: int(math.Round(s.customH))}
+	}
 	for _, a := range config.Presets {
 		if a.String() == s.ratioKey {
+			if s.orientation == portrait {
+				return config.Aspect{W: a.H, H: a.W}
+			}
 			return a
 		}
 	}
-	return config.Aspect{W: int(math.Round(s.customW)), H: int(math.Round(s.customH))}
-}
-
-func parseSize(v string) (config.Size, bool) {
-	w, h, ok := strings.Cut(v, "×")
-	if !ok {
-		return config.Size{}, false
-	}
-	wi, err1 := strconv.Atoi(w)
-	hi, err2 := strconv.Atoi(h)
-	return config.Size{W: wi, H: hi}, err1 == nil && err2 == nil
+	return config.Presets[0]
 }
 
 func (s *Settings) compose() config.Display {
 	d := s.draft
 	a := s.aspect()
+	d.Device = s.device
 	d.AspectW, d.AspectH = a.W, a.H
-	if sz, ok := parseSize(s.size); ok {
-		d.Width, d.Height = sz.W, sz.H
-	}
+	d.Width, d.Height = s.size.W, s.size.H
 	d.RefreshHz = int(math.Round(s.hz))
 	d.Trigger = triggers[s.trigger]
+	d.ConnectFrom = s.connectFrom
 	d.Name = strings.TrimSpace(d.Name)
 	return d
 }
 
 func (s *Settings) dirty() bool { return s.sel != "" && s.compose() != s.saved }
 
-func (s *Settings) sizeOptions() []string {
-	var out []string
-	for _, sz := range s.aspect().Sizes() {
-		out = append(out, sz.String())
+func (s *Settings) native() (config.Size, bool) {
+	m, ok := s.model()
+	if !ok {
+		return config.Size{}, false
 	}
-	if s.size != "" && !slices.Contains(out, s.size) {
-		out = append([]string{s.size}, out...)
+	n := m.Sharpest(s.orientation == portrait)
+	d := s.compose()
+	d.Width, d.Height = n.W, n.H
+	return n, d.Check() == config.NoProblem
+}
+
+func (s *Settings) sizeChoices() []config.Size {
+	out := s.aspect().Sizes(s.draft.HiDPI)
+	if n, ok := s.native(); ok && !slices.Contains(out, n) {
+		out = append(out, n)
+	}
+	if s.size.W > 0 && !slices.Contains(out, s.size) {
+		out = append(out, s.size)
+	}
+	slices.SortFunc(out, func(a, b config.Size) int { return max(a.W, a.H) - max(b.W, b.H) })
+	return out
+}
+
+func (s *Settings) sizeLabel(sz config.Size) string {
+	text := fmt.Sprintf("%d × %d", sz.W, sz.H)
+	if n, ok := s.native(); ok && n == sz {
+		m, _ := s.model()
+		return locales.SizeNative(text, m.ShortName())
+	}
+	return text
+}
+
+func (s *Settings) sizeOptions() []string {
+	sizes := s.sizeChoices()
+	out := make([]string, len(sizes))
+	for i, sz := range sizes {
+		out[i] = s.sizeLabel(sz)
 	}
 	return out
 }
 
+func (s *Settings) defaultSize() config.Size {
+	a := s.aspect()
+	if m, ok := s.model(); ok && m.Kind == devices.Phone {
+		if n, ok := s.native(); ok {
+			return n
+		}
+		if sizes := a.Sizes(s.draft.HiDPI); len(sizes) > 0 {
+			return sizes[0]
+		}
+	}
+	return a.DefaultSize()
+}
+
 func (s *Settings) ratioChanged() {
 	if a := s.aspect(); a.Valid() {
-		s.size = a.DefaultSize().String()
+		s.size = s.defaultSize()
 	}
 }
 
+func (s *Settings) chooseDevice(m devices.Model) {
+	s.device, s.ratioKey = m.ID(), ""
+	s.orientation = landscape
+	if m.Kind == devices.Phone {
+		s.orientation = portrait
+	}
+	s.pickerOpen, s.query = false, ""
+	s.ratioChanged()
+	if s.autoName {
+		s.draft.Name = uniqueName(s.b.Displays(), m.ShortName(), s.sel)
+	}
+}
+
+func (s *Settings) choosePreset(a config.Aspect) {
+	s.device, s.ratioKey, s.orientation = "", a.String(), landscape
+	s.pickerOpen, s.query = false, ""
+	s.ratioChanged()
+}
+
+func (s *Settings) chooseCustom() {
+	a := s.aspect()
+	s.device, s.ratioKey = "", customRatio
+	s.customW, s.customH = float64(a.W), float64(a.H)
+	s.pickerOpen, s.query = false, ""
+}
+
+func (s *Settings) orientationChanged() {
+	if s.ratioKey == customRatio && s.device == "" {
+		return
+	}
+	s.ratioChanged()
+}
+
 func (s *Settings) addDisplay() {
-	d := config.NewDisplay(nextName(s.b.Displays()), config.Presets[0])
+	d := config.NewDisplay("", config.Presets[0])
+	d.Device = config.DefaultDevice
+	if m, ok := devices.Lookup(d.Device); ok {
+		d.Name = uniqueName(s.b.Displays(), m.ShortName(), d.ID)
+	}
 	if err := s.b.Save(d); err != nil {
 		s.saveErr = err.Error()
 		return
@@ -210,14 +346,32 @@ func (s *Settings) addDisplay() {
 	s.load(d)
 }
 
-func nextName(ds []config.Display) string {
+var genericName = regexp.MustCompile(`^(Virtual Display|iPad)( \d+)?$`)
+
+func isAutoName(name, device string) bool {
+	if name == "" || genericName.MatchString(name) {
+		return true
+	}
+	if m, ok := devices.Lookup(device); ok {
+		base := m.ShortName()
+		return name == base || strings.HasPrefix(name, base+" ") && isNumber(strings.TrimPrefix(name, base+" "))
+	}
+	return false
+}
+
+func isNumber(s string) bool {
+	_, err := strconv.Atoi(s)
+	return err == nil
+}
+
+func uniqueName(ds []config.Display, base, self string) string {
 	taken := func(n string) bool {
-		return slices.ContainsFunc(ds, func(d config.Display) bool { return d.Name == n })
+		return slices.ContainsFunc(ds, func(d config.Display) bool { return d.ID != self && d.Name == n })
 	}
 	for i := 1; ; i++ {
-		n := "Virtual Display"
+		n := base
 		if i > 1 {
-			n = fmt.Sprintf("Virtual Display %d", i)
+			n = fmt.Sprintf("%s %d", base, i)
 		}
 		if !taken(n) {
 			return n
@@ -225,8 +379,16 @@ func nextName(ds []config.Display) string {
 	}
 }
 
+func (s *Settings) needsRemount() bool {
+	d := s.compose()
+	bw, bh := d.Box()
+	sw, sh := s.saved.Box()
+	return d.Name != s.saved.Name || d.Serial != s.saved.Serial || bw != sw || bh != sh
+}
+
 func (s *Settings) save() {
 	d := s.compose()
+	reshaped := d.AspectOf() != s.saved.AspectOf() && !s.needsRemount() && s.showingThis()
 	if d.Check() != config.NoProblem {
 		s.saveErr = problemText(d)
 		return
@@ -236,6 +398,7 @@ func (s *Settings) save() {
 		return
 	}
 	s.load(d)
+	s.reselect = reshaped
 }
 
 func (s *Settings) remove() {
@@ -273,6 +436,9 @@ func (s *Settings) View(c *ui.Context) {
 					}
 				})
 			})
+			if !s.general && s.sel != "" {
+				s.footer(c, p)
+			}
 		})
 	})
 	if ui.AlertDialog(c, &s.confirmDelete, locales.DeleteTitle(s.saved.Name), locales.DeleteMessage(),
@@ -288,13 +454,33 @@ func (s *Settings) title() string {
 	return locales.SidebarDisplays()
 }
 
+func (s *Settings) showingThis() bool {
+	st := s.b.Status(s.sel)
+	uu := s.b.UUStatus()
+	return st.Mounted && uu.Showing != 0 && uu.Showing == st.DisplayID
+}
+
+func (s *Settings) needsSwitch() bool {
+	uu := s.b.UUStatus()
+	return s.b.Status(s.sel).Mounted && uu.State == uudetect.Connected && uu.Showing != 0 && !s.showingThis()
+}
+
 func (s *Settings) summary() string {
 	if s.saved.Trigger != config.TriggerUU {
 		return locales.SummaryManual()
 	}
-	switch s.b.UUState() {
+	uu := s.b.UUStatus()
+	switch uu.State {
 	case uudetect.Connected:
-		return locales.SummaryUUConnected()
+		switch device := s.b.UUDevice(); {
+		case s.saved.ConnectFrom != "" && device != "" && device != s.saved.ConnectFrom:
+			return locales.SummaryUUOtherDevice(device)
+		case uu.Showing == 0:
+			return locales.SummaryUUConnected()
+		case s.showingThis():
+			return locales.SummaryUUShowingThis()
+		}
+		return locales.SummaryUUShowingOther(s.b.UUScreen())
 	case uudetect.Idle:
 		return locales.SummaryUUIdle()
 	}
@@ -344,20 +530,28 @@ func (s *Settings) emptyPage(c *ui.Context, p palette) {
 func (s *Settings) displayPage(c *ui.Context, p palette) {
 	t := c.Theme()
 	d := s.compose()
-	problem := problemText(d)
 
 	s.hero(c, p, d)
 
 	section(c, p, locales.SectionDisplay(), func() {
 		row(c, p, true, locales.FieldName(), "", func() {
-			ui.TextInput(c.Key("name"), &s.draft.Name).Width(240).Label(locales.FieldName())
-		})
-		row(c, p, false, locales.FieldAspect(), "", func() {
-			if ui.Select(c.Key("ratio"), &s.ratio, ratioOptions()).Width(240).Label(locales.FieldAspect()).Changed() {
-				s.ratioChanged()
+			if ui.TextInput(c.Key("name"), &s.draft.Name).Width(240).Label(locales.FieldName()).Changed() {
+				s.autoName = false
 			}
 		})
-		if s.ratioKey == customRatio {
+		m, isDevice := s.model()
+		row(c, p, false, locales.FieldDevice(), deviceHelp(m, isDevice), func() {
+			s.devicePicker(c, p)
+		})
+		if isDevice || s.ratioKey != customRatio {
+			row(c, p, false, locales.FieldOrientation(), "", func() {
+				if ui.Segmented(c.Key("orientation"), &s.orientation, locales.OrientationLandscape(), locales.OrientationPortrait()).
+					Label(locales.FieldOrientation()).Changed() {
+					s.orientationChanged()
+				}
+			})
+		}
+		if s.ratioKey == customRatio && !isDevice {
 			row(c, p, false, locales.FieldCustomRatio(), locales.HelpCustomRatio(), func() {
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 					w := ui.NumberInput(c.Key("ratioW"), &s.customW, 1, 10000, 1).Width(112).Label(locales.LabelRatioWidth()).Changed()
@@ -370,7 +564,7 @@ func (s *Settings) displayPage(c *ui.Context, p palette) {
 			})
 		}
 		row(c, p, false, locales.FieldLooksLike(), locales.HelpLooksLike(), func() {
-			ui.Select(c.Key("size"), &s.size, s.sizeOptions()).Width(240).Label(locales.FieldLooksLike())
+			ui.Select(c.Key("size"), &s.sizeChoice, s.sizeOptions()).Width(240).Label(locales.FieldLooksLike())
 		})
 		pw, ph := d.PixelSize()
 		row(c, p, false, locales.FieldHiDPI(), locales.HelpHiDPI(pw, ph), func() {
@@ -395,24 +589,40 @@ func (s *Settings) displayPage(c *ui.Context, p palette) {
 		row(c, p, true, locales.FieldMount(), triggerHelp(triggers[s.trigger]), func() {
 			ui.Segmented(c.Key("trigger"), &s.trigger, locales.TriggerManual(), locales.TriggerUU()).Label(locales.LabelWhenToMount())
 		})
+		if triggers[s.trigger] == config.TriggerUU {
+			s.connectRow(c, p)
+		}
 		row(c, p, false, locales.FieldScreensOff(), locales.HelpScreensOff(), func() {
 			ui.Switch(c.Key("screensOff"), &s.draft.ScreensOff).Label(locales.FieldScreensOff())
 		})
 	})
 
-	if problem != "" {
-		ui.Text(c, problem).TextColor(t.Danger)
-	} else if s.saveErr != "" {
-		ui.Text(c, s.saveErr).TextColor(t.Danger)
-	}
-	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-		ui.Button(c, locales.ButtonDelete()).TextColor(t.Danger).OnClick(func() { s.confirmDelete = true })
-		ui.Spacer(c)
-		if s.dirty() && s.b.Status(s.sel).Mounted {
-			ui.Text(c, locales.NoteRemount()).FontSize(11.5).TextColor(t.TextMuted)
-		}
-		ui.Button(c, locales.ButtonRevert()).Disabled(!s.dirty()).OnClick(func() { s.load(s.saved) })
-		ui.PrimaryButton(c, locales.ButtonSave()).Disabled(!s.dirty() || problem != "").OnClick(s.save)
+}
+
+func (s *Settings) footer(c *ui.Context, p palette) {
+	t := c.Theme()
+	problem := problemText(s.compose())
+	dirty := s.dirty()
+	ui.Column(c).Padding(12, 28, 14, 28).BorderWidth(1, 0, 0, 0).BorderColor(p.hairline).Background(p.page).Children(func() {
+		ui.Column(c).MaxWidth(640).Gap(6).Children(func() {
+			if problem != "" {
+				ui.Text(c, problem).TextColor(t.Danger)
+			} else if s.saveErr != "" {
+				ui.Text(c, s.saveErr).TextColor(t.Danger)
+			}
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Button(c, locales.ButtonDelete()).TextColor(t.Danger).OnClick(func() { s.confirmDelete = true })
+				ui.Spacer(c)
+				switch {
+				case dirty && s.b.Status(s.sel).Mounted && s.needsRemount():
+					ui.Text(c, locales.NoteRemount()).FontSize(11.5).TextColor(t.TextMuted)
+				case dirty:
+					ui.Text(c, locales.NoteUnsaved()).FontSize(11.5).TextColor(t.TextMuted)
+				}
+				ui.Button(c, locales.ButtonRevert()).Disabled(!dirty).OnClick(func() { s.load(s.saved) })
+				ui.PrimaryButton(c, locales.ButtonSave()).Disabled(!dirty || problem != "").OnClick(s.save)
+			})
+		})
 	})
 }
 
@@ -425,7 +635,14 @@ func (s *Settings) hero(c *ui.Context, p palette, d config.Display) {
 		ui.Row(c).Gap(20).AlignItems(ui.Center).Children(func() {
 			preview(c, p, d, mounted)
 			ui.Column(c).Grow(1).Gap(7).Children(func() {
-				ui.Text(c, s.saved.Name).FontSize(19).Bold().SingleLine()
+				name := d.Name
+				if name == "" {
+					name = s.saved.Name
+				}
+				ui.Text(c, name).FontSize(19).Bold().SingleLine()
+				if m, ok := devices.Lookup(d.Device); ok && modelTitle(m) != name {
+					ui.Text(c, modelTitle(m)).FontSize(12).TextColor(t.TextMuted).SingleLine().MarginY(-3)
+				}
 				switch {
 				case st.Busy:
 					pill(c, locales.Working(), t.TextMuted)
@@ -437,6 +654,15 @@ func (s *Settings) hero(c *ui.Context, p palette, d config.Display) {
 					pill(c, locales.StatusNotMounted(), t.TextMuted)
 				}
 				ui.Text(c, s.summary()).FontSize(12).TextColor(t.TextMuted)
+				if s.reselect && !s.showingThis() {
+					s.reselect = false
+				}
+				if s.reselect {
+					ui.Text(c, locales.HintReselect()).FontSize(12).FontWeight(600).TextColor(t.Accent)
+				}
+				if s.needsSwitch() {
+					ui.Text(c, locales.HintChooseInUU(s.saved.Name)).FontSize(12).FontWeight(600).TextColor(t.Accent)
+				}
 			})
 			label := locales.ButtonMount()
 			button := ui.PrimaryButton
@@ -481,15 +707,15 @@ func (s *Settings) generalPage(c *ui.Context, p palette) {
 		})
 	})
 	section(c, p, locales.SectionUU(), func() {
-		st := s.b.UUState()
+		st := s.b.UUStatus()
 		row(c, p, true, locales.FieldSession(), locales.HelpSession(), func() {
 			ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
 				col := t.TextMuted
-				if st == uudetect.Connected {
+				if st.State == uudetect.Connected {
 					col = t.Success
 				}
 				dot(c, col)
-				ui.Text(c, uuLabel(st)).TextColor(t.TextMuted)
+				ui.Text(c, uuLabel(st, s.b.UUDevice(), s.b.UUScreen())).TextColor(t.TextMuted)
 			})
 		})
 	})
@@ -557,20 +783,39 @@ func row(c *ui.Context, p palette, first bool, label, help string, control func(
 
 func preview(c *ui.Context, p palette, d config.Display, mounted bool) {
 	t := c.Theme()
-	w, h := fit(d.AspectW, d.AspectH, 156, 106)
-	screen := ui.Column(c).Size(w, h).Radius(10).Gap(2).Center()
-	if mounted {
-		screen = screen.Gradient(p.screenTop, p.screenBottom, 160).Border(4, p.frame)
-	} else {
-		screen = screen.Background(p.ghost).Border(2.5, p.frame).BorderStyle(ui.BorderDashed)
+	maxH := float32(106)
+	if d.AspectW < d.AspectH {
+		maxH = 132
 	}
-	screen.Children(func() {
-		ui.Text(c, fmt.Sprintf("%d × %d", d.Width, d.Height)).FontSize(13).FontWeight(600).SingleLine()
-		detail := fmt.Sprintf("%d Hz", d.RefreshHz)
-		if d.HiDPI {
-			detail = "HiDPI · " + detail
+	w, h := fit(d.AspectW, d.AspectH, 156, maxH)
+	narrow := w < 120
+	ui.Column(c).Width(156).AlignItems(ui.Center).Children(func() {
+		screen := ui.Column(c).Size(w, h).Radius(10).Gap(2).Center()
+		if mounted {
+			screen = screen.Gradient(p.screenTop, p.screenBottom, 160).Border(4, p.frame)
+		} else {
+			screen = screen.Background(p.ghost).Border(2.5, p.frame).BorderStyle(ui.BorderDashed)
 		}
-		ui.Text(c, detail).FontSize(11).TextColor(t.TextMuted).SingleLine()
+		screen.Children(func() {
+			size := func(text string) { ui.Text(c, text).FontSize(13).FontWeight(600).SingleLine() }
+			detail := func(text string) { ui.Text(c, text).FontSize(11).TextColor(t.TextMuted).SingleLine() }
+			hz := fmt.Sprintf("%d Hz", d.RefreshHz)
+			switch {
+			case narrow:
+				size(strconv.Itoa(d.Width))
+				size("× " + strconv.Itoa(d.Height))
+				if d.HiDPI {
+					detail("HiDPI")
+				}
+				detail(hz)
+			case d.HiDPI:
+				size(fmt.Sprintf("%d × %d", d.Width, d.Height))
+				detail("HiDPI · " + hz)
+			default:
+				size(fmt.Sprintf("%d × %d", d.Width, d.Height))
+				detail(hz)
+			}
+		})
 	})
 }
 
@@ -602,5 +847,42 @@ func notice(c *ui.Context, p palette, title, detail string) {
 	card(c, p).Padding(14).Gap(4).BorderColor(t.Danger).Children(func() {
 		ui.Text(c, title).FontWeight(600).TextColor(t.Danger)
 		ui.Text(c, detail).FontSize(12).TextColor(t.TextMuted)
+	})
+}
+
+func connectLabel(device string) string {
+	if device == "" {
+		return locales.ConnectAny()
+	}
+	return device
+}
+
+func (s *Settings) connectOptions() []string {
+	out := []string{locales.ConnectAny()}
+	out = append(out, s.b.Devices()...)
+	if s.connectFrom != "" && !slices.Contains(out, s.connectFrom) {
+		out = append(out, s.connectFrom)
+	}
+	return out
+}
+
+func (s *Settings) connectRow(c *ui.Context, p palette) {
+	if !s.b.AccessibilityAllowed() {
+		row(c, p, false, locales.FieldConnectFrom(), locales.HelpConnectAllow(), func() {
+			ui.Button(c.Key("allowAX"), locales.ButtonAllow()).OnClick(s.b.AllowAccessibility)
+		})
+		return
+	}
+	help := locales.HelpConnectAny()
+	switch {
+	case s.b.UUWindowClosed():
+		help = locales.HelpConnectWindowClosed()
+	case s.connectFrom != "":
+		help = locales.HelpConnectDevice(s.connectFrom)
+	case len(s.b.Devices()) == 0:
+		help = locales.HelpConnectNone()
+	}
+	row(c, p, false, locales.FieldConnectFrom(), help, func() {
+		ui.Select(c.Key("connectFrom"), &s.connectChoice, s.connectOptions()).Width(240).Label(locales.FieldConnectFrom())
 	})
 }

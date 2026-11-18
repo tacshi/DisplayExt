@@ -33,10 +33,16 @@ DisplayExt does just this one job, and does it from the menu bar.
 
 ## Features
 
-- **Virtual displays at any aspect ratio.** Presets for 4:3 (iPad Pro
-  12.9″/13″), 16:10, 16:9, 3:2 and 21:9, or any ratio of your own, such as
-  2420 : 1668 for an 11″ iPad Pro.
-- **HiDPI.** "Looks like" 2048 × 1536, rendered at 4096 × 3072 pixels.
+- **Shaped like the device you connect from.** Pick it by name from about
+  800 iPads and phones, landscape or portrait, and the display takes its
+  shape. On a phone it leaves room for UU远程's toolbars. For anything else,
+  choose 4:3, 16:10, 16:9, 3:2 or 21:9, or any ratio of your own.
+- **One display per device.** With Accessibility allowed, DisplayExt reads
+  which device is connected from UU远程's window, as Snug does, and mounts
+  only the displays set to **Connect from** that device. Connect once from
+  each device to see it there.
+- **HiDPI.** "Looks like" 2048 × 1536, rendered at 4096 × 3072 pixels. Sizes
+  too small for macOS to offer HiDPI are not listed.
 - **Any refresh rate** from 1 to 240 Hz, with presets up to 144 Hz.
 - **Mounts with UU远程.** A display can follow UU远程 sessions: it is mounted
   as a session connects, and unmounted a few seconds after it ends.
@@ -78,15 +84,22 @@ in the menu looks right away and shows the release notes.
 ## Use
 
 1. Open DisplayExt. Its icon appears in the menu bar; choose **Settings…**.
-2. The first launch adds a display named **iPad**: 4:3, looks like
-   2048 × 1536, HiDPI, 60 Hz, mounted **With UU远程**. Change it, or add
-   more with **Add Display**.
+2. The first launch adds a display named **iPad**, for an iPad Pro 13-inch
+   in landscape: looks like 2048 × 1536, HiDPI, 60 Hz, mounted
+   **With UU远程**. Choose your own device under **Device**, or add more
+   displays with **Add Display**.
 3. Connect to the Mac from the iPad with UU远程. DisplayExt mounts the
    display within a few seconds; choose it in UU远程's screen switcher.
    Disconnect, and it is unmounted.
 4. To mount a display by hand, tick it in the menu, or click **Mount** in
    Settings. Displays set to **Manually** remember whether they were mounted
    across launches.
+
+Search **Device** by name, such as "ipad pro 11" or "17 pro max", or by
+brand. For a phone, choose **Portrait**: the display then fits between
+UU远程's toolbars.
+
+<img src="docs/images/settings-picker.png" alt="Choosing a device">
 
 Turn on **Open at login** on the General page, where you can also choose the
 language and see whether a UU远程 session is connected.
@@ -107,11 +120,39 @@ language and see whether a UU远程 session is connected.
   ends that process, which always removes the display, even after macOS
   changed its mode; and if DisplayExt quits or crashes, its displays go with
   it.
+- **Changes in place.** Every display is created with room for 6400 × 6400
+  pixels and every size of its ratio registered in points, so macOS offers
+  each one in HiDPI. A new size, ratio, orientation, refresh rate or HiDPI
+  setting is applied to the mounted display in about a third of a second; it
+  keeps its number, and UU远程 keeps showing it. After a new ratio, UU远程
+  keeps streaming the old shape until you switch to another screen and back
+  in it, as Snug found. Only renaming remounts a display.
+- **Keeps its mode.** UU远程 sometimes resets a display to a mode it noted
+  earlier, such as the 1× mode a new display shows for a moment before
+  DisplayExt switches it to HiDPI. While a display is mounted, its helper
+  puts the chosen mode back, at most three times in 30 seconds. Change the
+  size under "Looks like", not in System Settings.
+- **Which device is connected.** UU远程 lists the device controlling the Mac
+  under 本机被控中 in its window. DisplayExt reads that list through
+  Accessibility while a session is connected. It never clicks or switches
+  anything in UU远程; if UU远程's window is closed, it reopens it in the
+  background, reads it and minimizes it to the Dock. Displays set to a device
+  wait up to three seconds for its name; if it still can't be read,
+  DisplayExt assumes the device that connected last, so only one display
+  takes over the screen. For phones, "Looks like" offers and
+  defaults to the size that is pixel for pixel on the phone's screen, marked
+  "Sharpest".
 - **UU远程 sessions.** macOS has no system-wide "remote session" state for
   third-party apps. While a session is connected, UU远程's `UURemoteServer`
   holds a power assertion named `UURemote Disable Display Sleep`; DisplayExt
   looks for it every two seconds and waits five seconds after it goes before
-  unmounting, so a brief reconnect leaves the display alone.
+  unmounting, so a brief reconnect leaves the display alone. It also follows
+  `UURemoteServer`'s screen capture in the system log, as
+  [Snug](https://github.com/zephyr4123/snug) does: a session counts from the
+  moment streaming starts, and Settings shows which screen UU远程 is showing,
+  with a reminder to choose the virtual display in UU远程 when it is another.
+  When DisplayExt opens during a session, it reads the last four hours of the
+  log to catch up.
 - **Other screens.** Rather than switching them off, DisplayExt mirrors the
   Mac's own screens to the virtual display and sets them to black. A screen
   that disappears ends any screen recording tied to it, and UU远程 records the
@@ -207,7 +248,10 @@ language by adding its catalog, then check it with `go tool mygo i18n check`.
 
 The virtual display code follows the approach of
 [go-macos/virtualdisplay](https://github.com/go-macos/virtualdisplay)
-(BSD-3-Clause) and Chromium's `virtual_display_util_mac.mm`. The app is built
+(BSD-3-Clause) and Chromium's `virtual_display_util_mac.mm`. The device list,
+the room left for UU远程's toolbars and the HiDPI limits come from
+[Snug](https://github.com/zephyr4123/snug) (MIT), whose license is in
+[`internal/devices/NOTICE`](internal/devices/NOTICE). The app is built
 with [MyGo](https://github.com/egoist/mygo).
 
 ## License

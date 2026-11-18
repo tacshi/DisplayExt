@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"slices"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -25,7 +26,8 @@ const StrategyEnv = "DISPLAYEXT_HOST_STRATEGY"
 const blackCheck = 500 * time.Millisecond
 
 type Command struct {
-	ScreensOff []uint32 `json:"screensOff"`
+	ScreensOff []uint32       `json:"screensOff"`
+	Spec       *vdisplay.Spec `json:"spec,omitzero"`
 }
 
 type Ready struct {
@@ -35,6 +37,8 @@ type Ready struct {
 
 	ScreensOff   []uint32 `json:"screensOff,omitempty"`
 	ScreensError string   `json:"screensError,omitempty"`
+
+	Remount bool `json:"remount,omitzero"`
 }
 
 func Run(args []string, stdin io.Reader, stdout io.Writer) int {
@@ -97,11 +101,25 @@ func serve(spec vdisplay.Spec, off []uint32, stdin io.Reader, stdout io.Writer) 
 	}()
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
+	hold := time.NewTicker(holdCheck)
+	defer hold.Stop()
+	keep := keeper{on: d.ModeErr == nil}
 	for running := true; running; {
 		select {
+		case now := <-hold.C:
+			keep.check(d, spec, now)
 		case c, ok := <-cmds:
 			if !ok {
 				running = false
+				break
+			}
+			if c.Spec != nil {
+				r := reshape(d, spec, *c.Spec)
+				if !r.Remount && r.ModeError == "" {
+					spec = *c.Spec
+					keep = keeper{on: true}
+				}
+				report(stdout, r)
 				break
 			}
 			var r Ready
@@ -118,6 +136,64 @@ func serve(spec vdisplay.Spec, off []uint32, stdin io.Reader, stdout io.Writer) 
 		return 1
 	}
 	return 0
+}
+
+func reshape(d *vdisplay.Display, cur, next vdisplay.Spec) Ready {
+	r := Ready{DisplayID: d.ID()}
+	if !next.Fits(cur) {
+		r.Remount = true
+		return r
+	}
+	if !next.SameModes(cur) {
+		if err := d.Reapply(next, vdisplay.DefaultOptions); err != nil {
+			r.ModeError = err.Error()
+			return r
+		}
+		fmt.Fprintf(os.Stderr, "helper: display %d has a new mode list\n", d.ID())
+	}
+	if err := d.ApplyMode(next); err != nil {
+		r.ModeError = err.Error()
+		return r
+	}
+	fmt.Fprintf(os.Stderr, "helper: display %d changed in place to %d×%d\n", d.ID(), next.PointsW, next.PointsH)
+	return r
+}
+
+const (
+	holdCheck  = time.Second
+	holdWindow = 30 * time.Second
+	holdTimes  = 3
+)
+
+type keeper struct {
+	on    bool
+	fixes []time.Time
+}
+
+func (k *keeper) allow(now time.Time) bool {
+	k.fixes = slices.DeleteFunc(k.fixes, func(t time.Time) bool { return now.Sub(t) >= holdWindow })
+	if len(k.fixes) >= holdTimes {
+		return false
+	}
+	k.fixes = append(k.fixes, now)
+	return true
+}
+
+func (k *keeper) check(d *vdisplay.Display, spec vdisplay.Spec, now time.Time) {
+	if !k.on {
+		return
+	}
+	cur, ok := vdisplay.CurrentMode(d.ID())
+	if !ok || cur.Same(spec.Want()) {
+		return
+	}
+	if !k.allow(now) {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "helper: display %d was switched to %s; putting back %d×%d\n", d.ID(), cur, spec.PointsW, spec.PointsH)
+	if err := d.ApplyMode(spec); err != nil {
+		fmt.Fprintln(os.Stderr, "helper: putting the mode back:", err)
+	}
 }
 
 type screens struct {

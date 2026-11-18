@@ -114,6 +114,16 @@ func (msgs Messages) MenuFollowsUU() string {
 	return Catalog.Format(msgs.locale, "menuFollowsUU", nil)
 }
 
+// MenuFollowsDevice says "With {device} on UU远程"
+// in the language the app shows.
+func MenuFollowsDevice(device string) string { return In(i18n.Locale()).MenuFollowsDevice(device) }
+
+// MenuFollowsDevice says "With {device} on UU远程"
+// in the language of msgs.
+func (msgs Messages) MenuFollowsDevice(device string) string {
+	return Catalog.Format(msgs.locale, "menuFollowsDevice", map[string]any{"device": device})
+}
+
 // Working says "Working…"
 // in the language the app shows.
 func Working() string { return In(i18n.Locale()).Working() }
@@ -172,6 +182,48 @@ func UuNotRunning() string { return In(i18n.Locale()).UuNotRunning() }
 // in the language of msgs.
 func (msgs Messages) UuNotRunning() string {
 	return Catalog.Format(msgs.locale, "uuNotRunning", nil)
+}
+
+// UuConnectedFrom says "Connected from {device}"
+// in the language the app shows.
+func UuConnectedFrom(device string) string { return In(i18n.Locale()).UuConnectedFrom(device) }
+
+// UuConnectedFrom says "Connected from {device}"
+// in the language of msgs.
+func (msgs Messages) UuConnectedFrom(device string) string {
+	return Catalog.Format(msgs.locale, "uuConnectedFrom", map[string]any{"device": device})
+}
+
+// UuConnectedFromShowing says "Connected from {device} · showing {screen}"
+// in the language the app shows.
+func UuConnectedFromShowing(device string, screen string) string {
+	return In(i18n.Locale()).UuConnectedFromShowing(device, screen)
+}
+
+// UuConnectedFromShowing says "Connected from {device} · showing {screen}"
+// in the language of msgs.
+func (msgs Messages) UuConnectedFromShowing(device string, screen string) string {
+	return Catalog.Format(msgs.locale, "uuConnectedFromShowing", map[string]any{"device": device, "screen": screen})
+}
+
+// UuConnectedShowing says "Connected · showing {screen}"
+// in the language the app shows.
+func UuConnectedShowing(screen string) string { return In(i18n.Locale()).UuConnectedShowing(screen) }
+
+// UuConnectedShowing says "Connected · showing {screen}"
+// in the language of msgs.
+func (msgs Messages) UuConnectedShowing(screen string) string {
+	return Catalog.Format(msgs.locale, "uuConnectedShowing", map[string]any{"screen": screen})
+}
+
+// ScreenNumber says "Display {id, number, ::group-off}"
+// in the language the app shows.
+func ScreenNumber(id int) string { return In(i18n.Locale()).ScreenNumber(id) }
+
+// ScreenNumber says "Display {id, number, ::group-off}"
+// in the language of msgs.
+func (msgs Messages) ScreenNumber(id int) string {
+	return Catalog.Format(msgs.locale, "screenNumber", map[string]any{"id": id})
 }
 
 // SidebarDisplays says "Displays"
@@ -264,11 +316,11 @@ func (msgs Messages) EmptyTitle() string {
 	return Catalog.Format(msgs.locale, "emptyTitle", nil)
 }
 
-// EmptyBody says "Add one, pick its aspect ratio, and mount it from the menu bar or with UU远程."
+// EmptyBody says "Add one, pick the device you connect from, and mount it from the menu bar or with UU远程."
 // in the language the app shows.
 func EmptyBody() string { return In(i18n.Locale()).EmptyBody() }
 
-// EmptyBody says "Add one, pick its aspect ratio, and mount it from the menu bar or with UU远程."
+// EmptyBody says "Add one, pick the device you connect from, and mount it from the menu bar or with UU远程."
 // in the language of msgs.
 func (msgs Messages) EmptyBody() string {
 	return Catalog.Format(msgs.locale, "emptyBody", nil)
@@ -294,14 +346,144 @@ func (msgs Messages) FieldName() string {
 	return Catalog.Format(msgs.locale, "fieldName", nil)
 }
 
-// FieldAspect says "Aspect ratio"
+// FieldDevice says "Device"
 // in the language the app shows.
-func FieldAspect() string { return In(i18n.Locale()).FieldAspect() }
+func FieldDevice() string { return In(i18n.Locale()).FieldDevice() }
 
-// FieldAspect says "Aspect ratio"
+// FieldDevice says "Device"
 // in the language of msgs.
-func (msgs Messages) FieldAspect() string {
-	return Catalog.Format(msgs.locale, "fieldAspect", nil)
+func (msgs Messages) FieldDevice() string {
+	return Catalog.Format(msgs.locale, "fieldDevice", nil)
+}
+
+// HelpDevicePhone says "Leaves room for UU远程's toolbars on this phone."
+// in the language the app shows.
+func HelpDevicePhone() string { return In(i18n.Locale()).HelpDevicePhone() }
+
+// HelpDevicePhone says "Leaves room for UU远程's toolbars on this phone."
+// in the language of msgs.
+func (msgs Messages) HelpDevicePhone() string {
+	return Catalog.Format(msgs.locale, "helpDevicePhone", nil)
+}
+
+// HelpDeviceTablet says "Fills this tablet's screen, edge to edge."
+// in the language the app shows.
+func HelpDeviceTablet() string { return In(i18n.Locale()).HelpDeviceTablet() }
+
+// HelpDeviceTablet says "Fills this tablet's screen, edge to edge."
+// in the language of msgs.
+func (msgs Messages) HelpDeviceTablet() string {
+	return Catalog.Format(msgs.locale, "helpDeviceTablet", nil)
+}
+
+// HelpDeviceOther says "Sets the aspect ratio."
+// in the language the app shows.
+func HelpDeviceOther() string { return In(i18n.Locale()).HelpDeviceOther() }
+
+// HelpDeviceOther says "Sets the aspect ratio."
+// in the language of msgs.
+func (msgs Messages) HelpDeviceOther() string {
+	return Catalog.Format(msgs.locale, "helpDeviceOther", nil)
+}
+
+// SearchDevices says "Search devices"
+// in the language the app shows.
+func SearchDevices() string { return In(i18n.Locale()).SearchDevices() }
+
+// SearchDevices says "Search devices"
+// in the language of msgs.
+func (msgs Messages) SearchDevices() string {
+	return Catalog.Format(msgs.locale, "searchDevices", nil)
+}
+
+// GroupOther says "Other screens"
+// in the language the app shows.
+func GroupOther() string { return In(i18n.Locale()).GroupOther() }
+
+// GroupOther says "Other screens"
+// in the language of msgs.
+func (msgs Messages) GroupOther() string {
+	return Catalog.Format(msgs.locale, "groupOther", nil)
+}
+
+// RatioCustomItem says "Custom Ratio…"
+// in the language the app shows.
+func RatioCustomItem() string { return In(i18n.Locale()).RatioCustomItem() }
+
+// RatioCustomItem says "Custom Ratio…"
+// in the language of msgs.
+func (msgs Messages) RatioCustomItem() string {
+	return Catalog.Format(msgs.locale, "ratioCustomItem", nil)
+}
+
+// NoDeviceMatch says "No devices match “{query}”"
+// in the language the app shows.
+func NoDeviceMatch(query string) string { return In(i18n.Locale()).NoDeviceMatch(query) }
+
+// NoDeviceMatch says "No devices match “{query}”"
+// in the language of msgs.
+func (msgs Messages) NoDeviceMatch(query string) string {
+	return Catalog.Format(msgs.locale, "noDeviceMatch", map[string]any{"query": query})
+}
+
+// NoDeviceMatchHint says "For any other screen, choose Custom Ratio."
+// in the language the app shows.
+func NoDeviceMatchHint() string { return In(i18n.Locale()).NoDeviceMatchHint() }
+
+// NoDeviceMatchHint says "For any other screen, choose Custom Ratio."
+// in the language of msgs.
+func (msgs Messages) NoDeviceMatchHint() string {
+	return Catalog.Format(msgs.locale, "noDeviceMatchHint", nil)
+}
+
+// FieldOrientation says "Orientation"
+// in the language the app shows.
+func FieldOrientation() string { return In(i18n.Locale()).FieldOrientation() }
+
+// FieldOrientation says "Orientation"
+// in the language of msgs.
+func (msgs Messages) FieldOrientation() string {
+	return Catalog.Format(msgs.locale, "fieldOrientation", nil)
+}
+
+// OrientationLandscape says "Landscape"
+// in the language the app shows.
+func OrientationLandscape() string { return In(i18n.Locale()).OrientationLandscape() }
+
+// OrientationLandscape says "Landscape"
+// in the language of msgs.
+func (msgs Messages) OrientationLandscape() string {
+	return Catalog.Format(msgs.locale, "orientationLandscape", nil)
+}
+
+// OrientationPortrait says "Portrait"
+// in the language the app shows.
+func OrientationPortrait() string { return In(i18n.Locale()).OrientationPortrait() }
+
+// OrientationPortrait says "Portrait"
+// in the language of msgs.
+func (msgs Messages) OrientationPortrait() string {
+	return Catalog.Format(msgs.locale, "orientationPortrait", nil)
+}
+
+// FoldInner says "{name} (inner screen)"
+// in the language the app shows.
+func FoldInner(name string) string { return In(i18n.Locale()).FoldInner(name) }
+
+// FoldInner says "{name} (inner screen)"
+// in the language of msgs.
+func (msgs Messages) FoldInner(name string) string {
+	return Catalog.Format(msgs.locale, "foldInner", map[string]any{"name": name})
+}
+
+// FoldOuter says "{name} (outer screen)"
+// in the language the app shows.
+func FoldOuter(name string) string { return In(i18n.Locale()).FoldOuter(name) }
+
+// FoldOuter says "{name} (outer screen)"
+// in the language of msgs.
+func (msgs Messages) FoldOuter(name string) string {
+	return Catalog.Format(msgs.locale, "foldOuter", map[string]any{"name": name})
 }
 
 // RatioCustom says "Custom"
@@ -372,6 +554,16 @@ func HelpLooksLike() string { return In(i18n.Locale()).HelpLooksLike() }
 // in the language of msgs.
 func (msgs Messages) HelpLooksLike() string {
 	return Catalog.Format(msgs.locale, "helpLooksLike", nil)
+}
+
+// SizeNative says "{size} · Sharpest on {device}"
+// in the language the app shows.
+func SizeNative(size string, device string) string { return In(i18n.Locale()).SizeNative(size, device) }
+
+// SizeNative says "{size} · Sharpest on {device}"
+// in the language of msgs.
+func (msgs Messages) SizeNative(size string, device string) string {
+	return Catalog.Format(msgs.locale, "sizeNative", map[string]any{"size": size, "device": device})
 }
 
 // FieldHiDPI says "HiDPI"
@@ -524,6 +716,86 @@ func (msgs Messages) HelpScreensOff() string {
 	return Catalog.Format(msgs.locale, "helpScreensOff", nil)
 }
 
+// FieldConnectFrom says "Connect from"
+// in the language the app shows.
+func FieldConnectFrom() string { return In(i18n.Locale()).FieldConnectFrom() }
+
+// FieldConnectFrom says "Connect from"
+// in the language of msgs.
+func (msgs Messages) FieldConnectFrom() string {
+	return Catalog.Format(msgs.locale, "fieldConnectFrom", nil)
+}
+
+// ConnectAny says "Any device"
+// in the language the app shows.
+func ConnectAny() string { return In(i18n.Locale()).ConnectAny() }
+
+// ConnectAny says "Any device"
+// in the language of msgs.
+func (msgs Messages) ConnectAny() string {
+	return Catalog.Format(msgs.locale, "connectAny", nil)
+}
+
+// HelpConnectAny says "Mounts for whichever device connects. A device is listed here after it connects once."
+// in the language the app shows.
+func HelpConnectAny() string { return In(i18n.Locale()).HelpConnectAny() }
+
+// HelpConnectAny says "Mounts for whichever device connects. A device is listed here after it connects once."
+// in the language of msgs.
+func (msgs Messages) HelpConnectAny() string {
+	return Catalog.Format(msgs.locale, "helpConnectAny", nil)
+}
+
+// HelpConnectDevice says "Mounts only while {device} is connected."
+// in the language the app shows.
+func HelpConnectDevice(device string) string { return In(i18n.Locale()).HelpConnectDevice(device) }
+
+// HelpConnectDevice says "Mounts only while {device} is connected."
+// in the language of msgs.
+func (msgs Messages) HelpConnectDevice(device string) string {
+	return Catalog.Format(msgs.locale, "helpConnectDevice", map[string]any{"device": device})
+}
+
+// HelpConnectNone says "Connect once from each device, then choose it here."
+// in the language the app shows.
+func HelpConnectNone() string { return In(i18n.Locale()).HelpConnectNone() }
+
+// HelpConnectNone says "Connect once from each device, then choose it here."
+// in the language of msgs.
+func (msgs Messages) HelpConnectNone() string {
+	return Catalog.Format(msgs.locale, "helpConnectNone", nil)
+}
+
+// HelpConnectAllow says "To tell your devices apart, allow DisplayExt to read UU远程's window in Accessibility."
+// in the language the app shows.
+func HelpConnectAllow() string { return In(i18n.Locale()).HelpConnectAllow() }
+
+// HelpConnectAllow says "To tell your devices apart, allow DisplayExt to read UU远程's window in Accessibility."
+// in the language of msgs.
+func (msgs Messages) HelpConnectAllow() string {
+	return Catalog.Format(msgs.locale, "helpConnectAllow", nil)
+}
+
+// HelpConnectWindowClosed says "UU远程's window is closed, so DisplayExt can't see which device connected. Keep it open, or minimized in the Dock."
+// in the language the app shows.
+func HelpConnectWindowClosed() string { return In(i18n.Locale()).HelpConnectWindowClosed() }
+
+// HelpConnectWindowClosed says "UU远程's window is closed, so DisplayExt can't see which device connected. Keep it open, or minimized in the Dock."
+// in the language of msgs.
+func (msgs Messages) HelpConnectWindowClosed() string {
+	return Catalog.Format(msgs.locale, "helpConnectWindowClosed", nil)
+}
+
+// ButtonAllow says "Allow…"
+// in the language the app shows.
+func ButtonAllow() string { return In(i18n.Locale()).ButtonAllow() }
+
+// ButtonAllow says "Allow…"
+// in the language of msgs.
+func (msgs Messages) ButtonAllow() string {
+	return Catalog.Format(msgs.locale, "buttonAllow", nil)
+}
+
 // ButtonDelete says "Delete Display…"
 // in the language the app shows.
 func ButtonDelete() string { return In(i18n.Locale()).ButtonDelete() }
@@ -534,14 +806,24 @@ func (msgs Messages) ButtonDelete() string {
 	return Catalog.Format(msgs.locale, "buttonDelete", nil)
 }
 
-// NoteRemount says "Saving remounts the display"
+// NoteRemount says "Renaming remounts the display"
 // in the language the app shows.
 func NoteRemount() string { return In(i18n.Locale()).NoteRemount() }
 
-// NoteRemount says "Saving remounts the display"
+// NoteRemount says "Renaming remounts the display"
 // in the language of msgs.
 func (msgs Messages) NoteRemount() string {
 	return Catalog.Format(msgs.locale, "noteRemount", nil)
+}
+
+// NoteUnsaved says "Unsaved changes"
+// in the language the app shows.
+func NoteUnsaved() string { return In(i18n.Locale()).NoteUnsaved() }
+
+// NoteUnsaved says "Unsaved changes"
+// in the language of msgs.
+func (msgs Messages) NoteUnsaved() string {
+	return Catalog.Format(msgs.locale, "noteUnsaved", nil)
 }
 
 // ButtonRevert says "Revert"
@@ -672,6 +954,60 @@ func SummaryUUNotRunning() string { return In(i18n.Locale()).SummaryUUNotRunning
 // in the language of msgs.
 func (msgs Messages) SummaryUUNotRunning() string {
 	return Catalog.Format(msgs.locale, "summaryUUNotRunning", nil)
+}
+
+// SummaryUUOtherDevice says "Follows UU远程 · {device} is connected"
+// in the language the app shows.
+func SummaryUUOtherDevice(device string) string {
+	return In(i18n.Locale()).SummaryUUOtherDevice(device)
+}
+
+// SummaryUUOtherDevice says "Follows UU远程 · {device} is connected"
+// in the language of msgs.
+func (msgs Messages) SummaryUUOtherDevice(device string) string {
+	return Catalog.Format(msgs.locale, "summaryUUOtherDevice", map[string]any{"device": device})
+}
+
+// SummaryUUShowingThis says "Follows UU远程 · showing this display"
+// in the language the app shows.
+func SummaryUUShowingThis() string { return In(i18n.Locale()).SummaryUUShowingThis() }
+
+// SummaryUUShowingThis says "Follows UU远程 · showing this display"
+// in the language of msgs.
+func (msgs Messages) SummaryUUShowingThis() string {
+	return Catalog.Format(msgs.locale, "summaryUUShowingThis", nil)
+}
+
+// SummaryUUShowingOther says "Follows UU远程 · showing {screen}"
+// in the language the app shows.
+func SummaryUUShowingOther(screen string) string {
+	return In(i18n.Locale()).SummaryUUShowingOther(screen)
+}
+
+// SummaryUUShowingOther says "Follows UU远程 · showing {screen}"
+// in the language of msgs.
+func (msgs Messages) SummaryUUShowingOther(screen string) string {
+	return Catalog.Format(msgs.locale, "summaryUUShowingOther", map[string]any{"screen": screen})
+}
+
+// HintChooseInUU says "To see this display, choose “{name}” in UU远程's screen switcher."
+// in the language the app shows.
+func HintChooseInUU(name string) string { return In(i18n.Locale()).HintChooseInUU(name) }
+
+// HintChooseInUU says "To see this display, choose “{name}” in UU远程's screen switcher."
+// in the language of msgs.
+func (msgs Messages) HintChooseInUU(name string) string {
+	return Catalog.Format(msgs.locale, "hintChooseInUU", map[string]any{"name": name})
+}
+
+// HintReselect says "UU远程 is still streaming the old shape. In UU远程, switch to another screen and back."
+// in the language the app shows.
+func HintReselect() string { return In(i18n.Locale()).HintReselect() }
+
+// HintReselect says "UU远程 is still streaming the old shape. In UU远程, switch to another screen and back."
+// in the language of msgs.
+func (msgs Messages) HintReselect() string {
+	return Catalog.Format(msgs.locale, "hintReselect", nil)
 }
 
 // ButtonMount says "Mount"
@@ -934,6 +1270,16 @@ func ProblemSize(long int, short int, max int) string {
 // in the language of msgs.
 func (msgs Messages) ProblemSize(long int, short int, max int) string {
 	return Catalog.Format(msgs.locale, "problemSize", map[string]any{"long": long, "short": short, "max": max})
+}
+
+// ProblemHiDPI says "HiDPI needs at least {long, number, ::group-off} × {short, number, ::group-off} points, either way round."
+// in the language the app shows.
+func ProblemHiDPI(long int, short int) string { return In(i18n.Locale()).ProblemHiDPI(long, short) }
+
+// ProblemHiDPI says "HiDPI needs at least {long, number, ::group-off} × {short, number, ::group-off} points, either way round."
+// in the language of msgs.
+func (msgs Messages) ProblemHiDPI(long int, short int) string {
+	return Catalog.Format(msgs.locale, "problemHiDPI", map[string]any{"long": long, "short": short})
 }
 
 // ProblemRefresh says "The refresh rate must be between {min, number, ::group-off} and {max, number, ::group-off} Hz."

@@ -96,3 +96,27 @@ func TestStateString(t *testing.T) {
 		}
 	}
 }
+
+func TestStreamingCountsAsConnected(t *testing.T) {
+	d := NewDetector(rule)
+	now := time.Now()
+	if st, _ := d.Step(now, Sample{Running: true, Streaming: true, Showing: 4}); st != Connected {
+		t.Fatalf("streaming without the assertion: %v", st)
+	}
+	if st, _ := d.Step(now.Add(4*time.Second), Sample{Running: true}); st != Connected {
+		t.Errorf("within the grace after streaming stopped: %v", st)
+	}
+	if st, _ := d.Step(now.Add(6*time.Second), Sample{Running: true}); st != Idle {
+		t.Errorf("after the grace: %v", st)
+	}
+}
+
+func TestSnapshotServer(t *testing.T) {
+	snap := Snapshot{Processes: map[int32]string{912: "UURemoteServer", 755: "UURemoteServer"}}
+	if got := snap.Server(); got != 755 {
+		t.Errorf("server pid %d, want 755", got)
+	}
+	if got := absentSnap.Server(); got != 0 {
+		t.Errorf("no server: %d", got)
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"displayext/internal/config"
+	"displayext/internal/devices"
 	"displayext/internal/manager"
 	"displayext/internal/uudetect"
 
@@ -74,7 +75,7 @@ func TestSettingsShowsDefault(t *testing.T) {
 	f := newFake()
 	s := NewSettings(f)
 	tt := newTester(s)
-	for _, want := range []string{"iPad", "2048 × 1536", "HiDPI · 60 Hz", "Not mounted",
+	for _, want := range []string{"iPad", "iPad Pro 13-inch (M5)", "2048 × 1536", "HiDPI · 60 Hz", "Not mounted",
 		"Sharp, Retina rendering at 4096 × 3072 pixels.", "Follows UU远程 · no session"} {
 		if !tt.HasText(want) {
 			t.Errorf("missing %q in %q", want, tt.Texts())
@@ -141,14 +142,13 @@ func TestSettingsRefreshPreset(t *testing.T) {
 func TestSettingsRatioChangeResetsSize(t *testing.T) {
 	f := newFake()
 	s := NewSettings(f)
-	s.ratioKey = config.Presets[2].String()
-	s.ratioChanged()
+	s.choosePreset(config.Presets[2])
 	d := s.compose()
-	if d.AspectW != 16 || d.AspectH != 9 || d.Width != 2048 || d.Height != 1152 {
+	if d.AspectW != 16 || d.AspectH != 9 || d.Width != 2048 || d.Height != 1152 || d.Device != "" {
 		t.Errorf("after switching to 16:9: %+v", d)
 	}
 
-	s.ratioKey = customRatio
+	s.chooseCustom()
 	s.customW, s.customH = 2420, 1668
 	s.ratioChanged()
 	d = s.compose()
@@ -162,7 +162,7 @@ func TestSettingsAddAndDelete(t *testing.T) {
 	s := NewSettings(f)
 	tt := newTester(s)
 	clickRole(t, tt, ui.RoleButton, "Add Display")
-	if len(f.displays) != 2 || f.displays[1].Name != "Virtual Display" {
+	if len(f.displays) != 2 || f.displays[1].Name != "iPad Pro 13″" || f.displays[1].Device != config.DefaultDevice {
 		t.Fatalf("after Add Display: %+v", f.displays)
 	}
 	if s.sel != f.displays[1].ID {
@@ -176,7 +176,7 @@ func TestSettingsAddAndDelete(t *testing.T) {
 	if len(f.displays) != 2 {
 		t.Fatal("deleted without asking")
 	}
-	if !tt.HasText("Delete “Virtual Display”?") {
+	if !tt.HasText("Delete “iPad Pro 13″”?") {
 		t.Fatalf("no confirmation: %q", tt.Texts())
 	}
 	clickRole(t, tt, ui.RoleButton, "Delete")
@@ -228,10 +228,18 @@ func TestGeneralPage(t *testing.T) {
 	}
 }
 
-func TestNextName(t *testing.T) {
-	ds := []config.Display{{Name: "Virtual Display"}, {Name: "Virtual Display 2"}}
-	if got := nextName(ds); got != "Virtual Display 3" {
-		t.Errorf("nextName = %q", got)
+func TestUniqueName(t *testing.T) {
+	ds := []config.Display{{ID: "a", Name: "iPhone 17"}, {ID: "b", Name: "iPhone 17 2"}}
+	if got := uniqueName(ds, "iPhone 17", "c"); got != "iPhone 17 3" {
+		t.Errorf("uniqueName = %q", got)
+	}
+	if got := uniqueName(ds, "iPhone 17", "a"); got != "iPhone 17" {
+		t.Errorf("uniqueName of the display's own name = %q", got)
+	}
+	for name, want := range map[string]bool{"iPad": true, "Virtual Display 2": true, "iPad Pro 13″ 2": true, "Studio": false, "iPad Pro 13″ mine": false} {
+		if got := isAutoName(name, config.DefaultDevice); got != want {
+			t.Errorf("isAutoName(%q) = %v", name, got)
+		}
 	}
 }
 
@@ -248,13 +256,13 @@ func TestSettingsInChinese(t *testing.T) {
 	tt := newTester(s)
 	tt.SetLocale("zh-Hans")
 	tt.Frame()
-	for _, want := range []string{"显示器", "未挂载", "跟随 UU远程 · 无会话", "宽高比", "4:3 — iPad Pro 12.9/13 英寸", "以 4096 × 3072 像素进行清晰的 Retina 渲染。", "保存", "删除显示器…"} {
+	for _, want := range []string{"显示器", "未挂载", "跟随 UU远程 · 无会话", "设备", "iPad Pro 13-inch (M5)", "铺满这台平板的屏幕。", "横向", "以 4096 × 3072 像素进行清晰的 Retina 渲染。", "保存", "删除显示器…"} {
 		if !tt.HasText(want) {
 			t.Errorf("missing %q in %q", want, tt.Texts())
 		}
 	}
-	if s.ratioKey != "4:3" {
-		t.Errorf("ratio key %q in Chinese", s.ratioKey)
+	if s.device != config.DefaultDevice || s.dirty() {
+		t.Errorf("device %q, dirty %v in Chinese", s.device, s.dirty())
 	}
 }
 
@@ -282,7 +290,7 @@ func TestLanguageChoice(t *testing.T) {
 
 func TestRatioSurvivesLanguageChange(t *testing.T) {
 	f := newFake()
-	f.displays[0].AspectW, f.displays[0].AspectH = 16, 9
+	f.displays[0].AspectW, f.displays[0].AspectH, f.displays[0].Device = 16, 9, ""
 	s := NewSettings(f)
 	tt := newTester(s)
 	tt.Frame()
@@ -323,7 +331,7 @@ func TestSettingsRatioOutOfRange(t *testing.T) {
 	f := newFake()
 	s := NewSettings(f)
 	tt := newTester(s)
-	s.ratioKey, s.ratio = customRatio, ratioKeyLabel(customRatio)
+	s.chooseCustom()
 	s.customW, s.customH = 1, 10
 	s.ratioChanged()
 	tt.Frame()
@@ -339,11 +347,11 @@ func TestSettingsRatioOutOfRange(t *testing.T) {
 func TestSettingsPortraitRatio(t *testing.T) {
 	f := newFake()
 	s := NewSettings(f)
-	s.ratioKey, s.ratio = customRatio, ratioKeyLabel(customRatio)
+	s.chooseCustom()
 	for _, r := range []config.Aspect{{W: 9, H: 16}, {W: 1, H: 4}, {W: 3, H: 10}} {
 		s.customW, s.customH = float64(r.W), float64(r.H)
 		s.ratioChanged()
-		for _, size := range s.sizeOptions() {
+		for _, size := range s.sizeChoices() {
 			s.size = size
 			if p := problemText(s.compose()); p != "" {
 				t.Errorf("%v offers %s, which is refused: %s", r, size, p)
@@ -361,5 +369,96 @@ func TestSettingsResetNotice(t *testing.T) {
 		if !tt.HasText(want) {
 			t.Errorf("missing %q: %q", want, tt.Texts())
 		}
+	}
+}
+
+func TestDevicePicker(t *testing.T) {
+	f := newFake()
+	s := NewSettings(f)
+	tt := newTester(s)
+	clickRole(t, tt, ui.RoleButton, "Device")
+	tt.Frame()
+	if !s.pickerOpen || !tt.HasText("Other screens") {
+		t.Fatalf("the picker did not open: %q", tt.Texts())
+	}
+	tt.Type("17 pro max")
+	tt.Frame()
+	if s.query != "17 pro max" || tt.HasText("iPad Air 13-inch (M4)") || !tt.HasText("iPhone 17 Pro Max") {
+		t.Fatalf("search did not narrow the list: query %q, %q", s.query, tt.Texts())
+	}
+	clickRole(t, tt, ui.RoleButton, "iPhone 17 Pro Max")
+	tt.Frame()
+	d := s.compose()
+	if s.pickerOpen || d.Device != "Apple iPhone 17 Pro Max" || s.orientation != portrait {
+		t.Fatalf("after choosing the iPhone: open %v, %+v", s.pickerOpen, d)
+	}
+	if d.Width != 540 || d.Height != 950 || d.Name != "iPhone 17 Pro Max" {
+		t.Errorf("iPhone portrait: %d×%d named %q, want 540×950 named iPhone 17 Pro Max", d.Width, d.Height, d.Name)
+	}
+	if !tt.HasText("Leaves room for UU远程's toolbars on this phone.") {
+		t.Errorf("no phone help: %q", tt.Texts())
+	}
+	clickRole(t, tt, ui.RoleRadio, "Landscape")
+	tt.Frame()
+	if d := s.compose(); d.Width <= d.Height || d.Check() != config.NoProblem {
+		t.Errorf("landscape iPhone: %+v (%s)", d, problemText(d))
+	}
+	if err := tt.Click("Save"); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.displays[0]; got.Device != "Apple iPhone 17 Pro Max" || got.AspectW <= got.AspectH {
+		t.Errorf("saved %+v", got)
+	}
+}
+
+func TestDevicePickerKeepsTypedName(t *testing.T) {
+	f := newFake()
+	s := NewSettings(f)
+	s.draft.Name = "Studio"
+	s.autoName = false
+	m, _ := devices.Lookup("Apple iPad Air 11-inch (M4)")
+	s.chooseDevice(m)
+	if s.draft.Name != "Studio" {
+		t.Errorf("a typed name became %q", s.draft.Name)
+	}
+}
+
+func TestDevicePickerNoMatch(t *testing.T) {
+	f := newFake()
+	s := NewSettings(f)
+	tt := newTester(s)
+	s.pickerOpen, s.query = true, "zzzz"
+	tt.Frame()
+	for _, want := range []string{"No devices match “zzzz”", "For any other screen, choose Custom Ratio.", "Custom Ratio…"} {
+		if !tt.HasText(want) {
+			t.Errorf("missing %q: %q", want, tt.Texts())
+		}
+	}
+}
+
+func TestNativeSizeOption(t *testing.T) {
+	f := newFake()
+	s := NewSettings(f)
+	want := "1376 × 1032 · Same as iPad Pro 13″"
+	if !slices.Contains(s.sizeOptions(), want) {
+		t.Fatalf("no native size in %q", s.sizeOptions())
+	}
+	tt := newTester(s)
+	s.sizeChoice = want
+	tt.Frame()
+	if s.size != (config.Size{W: 1376, H: 1032}) || !s.dirty() {
+		t.Errorf("choosing the native size: %v, dirty %v", s.size, s.dirty())
+	}
+}
+
+func TestHiDPIProblem(t *testing.T) {
+	f := newFake()
+	s := NewSettings(f)
+	tt := newTester(s)
+	s.choosePreset(config.Aspect{W: 21, H: 9})
+	s.size = config.Size{W: 1024, H: 439}
+	tt.Frame()
+	if !tt.HasText("HiDPI needs at least 800 × 525 points, either way round.") {
+		t.Errorf("no HiDPI problem: %q", tt.Texts())
 	}
 }

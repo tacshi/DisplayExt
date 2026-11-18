@@ -264,11 +264,11 @@ func (msgs Messages) EmptyTitle() string {
 	return Catalog.Format(msgs.locale, "emptyTitle", nil)
 }
 
-// EmptyBody says "Add one, pick its aspect ratio, and mount it from the menu bar or with UU远程."
+// EmptyBody says "Add one, pick the device you connect from, and mount it from the menu bar or with UU远程."
 // in the language the app shows.
 func EmptyBody() string { return In(i18n.Locale()).EmptyBody() }
 
-// EmptyBody says "Add one, pick its aspect ratio, and mount it from the menu bar or with UU远程."
+// EmptyBody says "Add one, pick the device you connect from, and mount it from the menu bar or with UU远程."
 // in the language of msgs.
 func (msgs Messages) EmptyBody() string {
 	return Catalog.Format(msgs.locale, "emptyBody", nil)
@@ -294,14 +294,144 @@ func (msgs Messages) FieldName() string {
 	return Catalog.Format(msgs.locale, "fieldName", nil)
 }
 
-// FieldAspect says "Aspect ratio"
+// FieldDevice says "Device"
 // in the language the app shows.
-func FieldAspect() string { return In(i18n.Locale()).FieldAspect() }
+func FieldDevice() string { return In(i18n.Locale()).FieldDevice() }
 
-// FieldAspect says "Aspect ratio"
+// FieldDevice says "Device"
 // in the language of msgs.
-func (msgs Messages) FieldAspect() string {
-	return Catalog.Format(msgs.locale, "fieldAspect", nil)
+func (msgs Messages) FieldDevice() string {
+	return Catalog.Format(msgs.locale, "fieldDevice", nil)
+}
+
+// HelpDevicePhone says "Leaves room for UU远程's toolbars on this phone."
+// in the language the app shows.
+func HelpDevicePhone() string { return In(i18n.Locale()).HelpDevicePhone() }
+
+// HelpDevicePhone says "Leaves room for UU远程's toolbars on this phone."
+// in the language of msgs.
+func (msgs Messages) HelpDevicePhone() string {
+	return Catalog.Format(msgs.locale, "helpDevicePhone", nil)
+}
+
+// HelpDeviceTablet says "Fills this tablet's screen, edge to edge."
+// in the language the app shows.
+func HelpDeviceTablet() string { return In(i18n.Locale()).HelpDeviceTablet() }
+
+// HelpDeviceTablet says "Fills this tablet's screen, edge to edge."
+// in the language of msgs.
+func (msgs Messages) HelpDeviceTablet() string {
+	return Catalog.Format(msgs.locale, "helpDeviceTablet", nil)
+}
+
+// HelpDeviceOther says "Sets the aspect ratio."
+// in the language the app shows.
+func HelpDeviceOther() string { return In(i18n.Locale()).HelpDeviceOther() }
+
+// HelpDeviceOther says "Sets the aspect ratio."
+// in the language of msgs.
+func (msgs Messages) HelpDeviceOther() string {
+	return Catalog.Format(msgs.locale, "helpDeviceOther", nil)
+}
+
+// SearchDevices says "Search devices"
+// in the language the app shows.
+func SearchDevices() string { return In(i18n.Locale()).SearchDevices() }
+
+// SearchDevices says "Search devices"
+// in the language of msgs.
+func (msgs Messages) SearchDevices() string {
+	return Catalog.Format(msgs.locale, "searchDevices", nil)
+}
+
+// GroupOther says "Other screens"
+// in the language the app shows.
+func GroupOther() string { return In(i18n.Locale()).GroupOther() }
+
+// GroupOther says "Other screens"
+// in the language of msgs.
+func (msgs Messages) GroupOther() string {
+	return Catalog.Format(msgs.locale, "groupOther", nil)
+}
+
+// RatioCustomItem says "Custom Ratio…"
+// in the language the app shows.
+func RatioCustomItem() string { return In(i18n.Locale()).RatioCustomItem() }
+
+// RatioCustomItem says "Custom Ratio…"
+// in the language of msgs.
+func (msgs Messages) RatioCustomItem() string {
+	return Catalog.Format(msgs.locale, "ratioCustomItem", nil)
+}
+
+// NoDeviceMatch says "No devices match “{query}”"
+// in the language the app shows.
+func NoDeviceMatch(query string) string { return In(i18n.Locale()).NoDeviceMatch(query) }
+
+// NoDeviceMatch says "No devices match “{query}”"
+// in the language of msgs.
+func (msgs Messages) NoDeviceMatch(query string) string {
+	return Catalog.Format(msgs.locale, "noDeviceMatch", map[string]any{"query": query})
+}
+
+// NoDeviceMatchHint says "For any other screen, choose Custom Ratio."
+// in the language the app shows.
+func NoDeviceMatchHint() string { return In(i18n.Locale()).NoDeviceMatchHint() }
+
+// NoDeviceMatchHint says "For any other screen, choose Custom Ratio."
+// in the language of msgs.
+func (msgs Messages) NoDeviceMatchHint() string {
+	return Catalog.Format(msgs.locale, "noDeviceMatchHint", nil)
+}
+
+// FieldOrientation says "Orientation"
+// in the language the app shows.
+func FieldOrientation() string { return In(i18n.Locale()).FieldOrientation() }
+
+// FieldOrientation says "Orientation"
+// in the language of msgs.
+func (msgs Messages) FieldOrientation() string {
+	return Catalog.Format(msgs.locale, "fieldOrientation", nil)
+}
+
+// OrientationLandscape says "Landscape"
+// in the language the app shows.
+func OrientationLandscape() string { return In(i18n.Locale()).OrientationLandscape() }
+
+// OrientationLandscape says "Landscape"
+// in the language of msgs.
+func (msgs Messages) OrientationLandscape() string {
+	return Catalog.Format(msgs.locale, "orientationLandscape", nil)
+}
+
+// OrientationPortrait says "Portrait"
+// in the language the app shows.
+func OrientationPortrait() string { return In(i18n.Locale()).OrientationPortrait() }
+
+// OrientationPortrait says "Portrait"
+// in the language of msgs.
+func (msgs Messages) OrientationPortrait() string {
+	return Catalog.Format(msgs.locale, "orientationPortrait", nil)
+}
+
+// FoldInner says "{name} (inner screen)"
+// in the language the app shows.
+func FoldInner(name string) string { return In(i18n.Locale()).FoldInner(name) }
+
+// FoldInner says "{name} (inner screen)"
+// in the language of msgs.
+func (msgs Messages) FoldInner(name string) string {
+	return Catalog.Format(msgs.locale, "foldInner", map[string]any{"name": name})
+}
+
+// FoldOuter says "{name} (outer screen)"
+// in the language the app shows.
+func FoldOuter(name string) string { return In(i18n.Locale()).FoldOuter(name) }
+
+// FoldOuter says "{name} (outer screen)"
+// in the language of msgs.
+func (msgs Messages) FoldOuter(name string) string {
+	return Catalog.Format(msgs.locale, "foldOuter", map[string]any{"name": name})
 }
 
 // RatioCustom says "Custom"
@@ -372,6 +502,16 @@ func HelpLooksLike() string { return In(i18n.Locale()).HelpLooksLike() }
 // in the language of msgs.
 func (msgs Messages) HelpLooksLike() string {
 	return Catalog.Format(msgs.locale, "helpLooksLike", nil)
+}
+
+// SizeNative says "{size} · Same as {device}"
+// in the language the app shows.
+func SizeNative(size string, device string) string { return In(i18n.Locale()).SizeNative(size, device) }
+
+// SizeNative says "{size} · Same as {device}"
+// in the language of msgs.
+func (msgs Messages) SizeNative(size string, device string) string {
+	return Catalog.Format(msgs.locale, "sizeNative", map[string]any{"size": size, "device": device})
 }
 
 // FieldHiDPI says "HiDPI"
@@ -934,6 +1074,16 @@ func ProblemSize(long int, short int, max int) string {
 // in the language of msgs.
 func (msgs Messages) ProblemSize(long int, short int, max int) string {
 	return Catalog.Format(msgs.locale, "problemSize", map[string]any{"long": long, "short": short, "max": max})
+}
+
+// ProblemHiDPI says "HiDPI needs at least {long, number, ::group-off} × {short, number, ::group-off} points, either way round."
+// in the language the app shows.
+func ProblemHiDPI(long int, short int) string { return In(i18n.Locale()).ProblemHiDPI(long, short) }
+
+// ProblemHiDPI says "HiDPI needs at least {long, number, ::group-off} × {short, number, ::group-off} points, either way round."
+// in the language of msgs.
+func (msgs Messages) ProblemHiDPI(long int, short int) string {
+	return Catalog.Format(msgs.locale, "problemHiDPI", map[string]any{"long": long, "short": short})
 }
 
 // ProblemRefresh says "The refresh rate must be between {min, number, ::group-off} and {max, number, ::group-off} Hz."

@@ -10,7 +10,7 @@ import (
 )
 
 func TestSizesFourThree(t *testing.T) {
-	got := Aspect{W: 4, H: 3}.Sizes()
+	got := Aspect{W: 4, H: 3}.Sizes(true)
 	want := []Size{
 		{1024, 768}, {1280, 960}, {1440, 1080}, {1600, 1200}, {1920, 1440},
 		{2048, 1536}, {2304, 1728}, {2560, 1920}, {2880, 2160}, {3200, 2400},
@@ -35,7 +35,7 @@ func TestDefaultSizes(t *testing.T) {
 }
 
 func TestCustomRatioSizes(t *testing.T) {
-	sizes := Aspect{W: 605, H: 417}.Sizes()
+	sizes := Aspect{W: 605, H: 417}.Sizes(true)
 	if len(sizes) == 0 {
 		t.Fatal("no sizes for a custom ratio")
 	}
@@ -48,7 +48,7 @@ func TestCustomRatioSizes(t *testing.T) {
 
 func TestInvalidAspect(t *testing.T) {
 	for _, a := range []Aspect{{0, 3}, {4, 0}, {-4, 3}, {100, 1}} {
-		if a.Valid() || a.Sizes() != nil {
+		if a.Valid() || a.Sizes(true) != nil {
 			t.Errorf("%v should be invalid with no sizes", a)
 		}
 	}
@@ -101,18 +101,19 @@ func TestDefaultIsValid(t *testing.T) {
 func TestValidate(t *testing.T) {
 	base := Default().Displays[0]
 	bad := map[string]func(*Display){
-		"no name":        func(d *Display) { d.Name = "" },
-		"zero ratio":     func(d *Display) { d.AspectH = 0 },
-		"ratio 1:10":     func(d *Display) { d.AspectW, d.AspectH = 1, 10 },
-		"ratio 10:1":     func(d *Display) { d.AspectW, d.AspectH = 10, 1 },
-		"tiny":           func(d *Display) { d.Width = 100 },
-		"too tall":       func(d *Display) { d.Width, d.Height = 8192, 8192+8 },
-		"short side 300": func(d *Display) { d.Width, d.Height = 300, 1200 },
-		"long side 600":  func(d *Display) { d.Width, d.Height = 600, 400 },
-		"refresh 0":      func(d *Display) { d.RefreshHz = 0 },
-		"refresh 300":    func(d *Display) { d.RefreshHz = 300 },
-		"no serial":      func(d *Display) { d.Serial = 0 },
-		"bad trigger":    func(d *Display) { d.Trigger = "sometimes" },
+		"no name":         func(d *Display) { d.Name = "" },
+		"zero ratio":      func(d *Display) { d.AspectH = 0 },
+		"ratio 1:10":      func(d *Display) { d.AspectW, d.AspectH = 1, 10 },
+		"ratio 10:1":      func(d *Display) { d.AspectW, d.AspectH = 10, 1 },
+		"tiny":            func(d *Display) { d.Width = 100 },
+		"too tall":        func(d *Display) { d.Width, d.Height = 8192, 8192+8 },
+		"short side 300":  func(d *Display) { d.Width, d.Height = 300, 1200 },
+		"long side 600":   func(d *Display) { d.Width, d.Height = 600, 400 },
+		"refresh 0":       func(d *Display) { d.RefreshHz = 0 },
+		"refresh 300":     func(d *Display) { d.RefreshHz = 300 },
+		"no serial":       func(d *Display) { d.Serial = 0 },
+		"bad trigger":     func(d *Display) { d.Trigger = "sometimes" },
+		"HiDPI 2:1 small": func(d *Display) { d.AspectW, d.AspectH, d.Width, d.Height = 2, 1, 1024, 512 },
 	}
 	for name, mutate := range bad {
 		d := base
@@ -123,10 +124,11 @@ func TestValidate(t *testing.T) {
 	}
 	good := map[string]func(*Display){
 		"144 Hz":             func(d *Display) { d.RefreshHz = 144 },
-		"portrait 1:2":       func(d *Display) { d.AspectW, d.AspectH, d.Width, d.Height = 1, 2, 512, 1024 },
-		"landscape 2:1":      func(d *Display) { d.AspectW, d.AspectH, d.Width, d.Height = 2, 1, 1024, 512 },
+		"portrait 1:2":       func(d *Display) { d.AspectW, d.AspectH, d.Width, d.Height = 1, 2, 540, 1080 },
+		"landscape 2:1":      func(d *Display) { d.AspectW, d.AspectH, d.Width, d.Height = 2, 1, 1080, 540 },
+		"1:2 without HiDPI":  func(d *Display) { d.AspectW, d.AspectH, d.Width, d.Height, d.HiDPI = 1, 2, 512, 1024, false },
 		"largest":            func(d *Display) { d.Width, d.Height = MaxPoints, MaxPoints },
-		"smallest, standing": func(d *Display) { d.AspectW, d.AspectH, d.Width, d.Height = 1, 2, 320, 640 },
+		"smallest, standing": func(d *Display) { d.AspectW, d.AspectH, d.Width, d.Height, d.HiDPI = 1, 2, 320, 640, false },
 	}
 	for name, mutate := range good {
 		d := base
@@ -146,7 +148,7 @@ func TestEveryOfferedSizeIsValid(t *testing.T) {
 			if err := d.Validate(); err != nil {
 				t.Errorf("%v default size %d×%d: %v", a, d.Width, d.Height, err)
 			}
-			for _, s := range a.Sizes() {
+			for _, s := range a.Sizes(hidpi) {
 				d.Width, d.Height = s.W, s.H
 				if err := d.Validate(); err != nil {
 					t.Errorf("%v offers %v: %v", a, s, err)
@@ -247,5 +249,44 @@ func TestDisplayLookup(t *testing.T) {
 	}
 	if _, ok := c.Display("nope"); ok {
 		t.Error("found a display that does not exist")
+	}
+}
+
+func TestHiDPIThreshold(t *testing.T) {
+	cases := []struct {
+		w, h int
+		ok   bool
+	}{
+		{800, 525, true}, {525, 800, true}, {800, 524, false}, {799, 540, false},
+		{1024, 439, false}, {540, 950, true}, {2048, 1536, true},
+	}
+	for _, c := range cases {
+		if got := HiDPIOK(c.w, c.h); got != c.ok {
+			t.Errorf("HiDPIOK(%d, %d) = %v, want %v", c.w, c.h, got, c.ok)
+		}
+	}
+	d := NewDisplay("Wide", Aspect{W: 21, H: 9})
+	d.Width, d.Height = 1024, 439
+	if d.Check() != BadHiDPI {
+		t.Errorf("HiDPI 1024×439 check = %v, want BadHiDPI", d.Check())
+	}
+	d.HiDPI = false
+	if d.Check() != NoProblem {
+		t.Errorf("non-HiDPI 1024×439 check = %v, want NoProblem", d.Check())
+	}
+}
+
+func TestCompactSize(t *testing.T) {
+	cases := map[Aspect]Size{
+		{W: 16, H: 9}:    {960, 540},
+		{W: 220, H: 387}: {540, 950},
+	}
+	for a, want := range cases {
+		if got := a.Sizes(true); len(got) == 0 || got[0] != want {
+			t.Errorf("%v first size = %v, want %v", a, got, want)
+		}
+	}
+	if got := (Aspect{W: 4, H: 3}).Sizes(true)[0]; got != (Size{1024, 768}) {
+		t.Errorf("4:3 first size = %v, want 1024×768", got)
 	}
 }

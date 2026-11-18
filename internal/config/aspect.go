@@ -28,11 +28,35 @@ func (s Size) String() string { return fmt.Sprintf("%d×%d", s.W, s.H) }
 
 var sizeTargets = []int{1024, 1280, 1440, 1600, 1920, 2048, 2304, 2560, 2880, 3200}
 
-func (a Aspect) Sizes() []Size {
+const (
+	MinHiDPILong  = 800
+	MinHiDPIShort = 525
+	CompactShort  = 540
+)
+
+func HiDPIOK(w, h int) bool {
+	return max(w, h) >= MinHiDPILong && min(w, h) >= MinHiDPIShort
+}
+
+func (a Aspect) Sizes(hidpi bool) []Size {
 	if !a.Valid() {
 		return nil
 	}
 	var out []Size
+	add := func(s Size) {
+		if sizeOK(s.W, s.H) && (!hidpi || HiDPIOK(s.W, s.H)) && !slices.Contains(out, s) {
+			out = append(out, s)
+		}
+	}
+	compact := Size{W: CompactShort, H: CompactShort}
+	if a.W >= a.H {
+		compact.W = int(math.Round(float64(CompactShort) * float64(a.W) / float64(a.H)))
+	} else {
+		compact.H = int(math.Round(float64(CompactShort) * float64(a.H) / float64(a.W)))
+	}
+	if HiDPIOK(compact.W, compact.H) {
+		add(compact)
+	}
 	for _, t := range sizeTargets {
 		var s Size
 		if a.W >= a.H {
@@ -42,18 +66,19 @@ func (a Aspect) Sizes() []Size {
 			s.H = roundTo(t, 8)
 			s.W = int(math.Round(float64(s.H) * float64(a.W) / float64(a.H)))
 		}
-		if !sizeOK(s.W, s.H) {
+		if max(s.W, s.H) <= max(compact.W, compact.H) {
 			continue
 		}
-		if !slices.Contains(out, s) {
-			out = append(out, s)
-		}
+		add(s)
 	}
 	return out
 }
 
 func (a Aspect) DefaultSize() Size {
-	sizes := a.Sizes()
+	sizes := a.Sizes(true)
+	if len(sizes) == 0 {
+		sizes = a.Sizes(false)
+	}
 	for _, s := range sizes {
 		if max(s.W, s.H) == 2048 {
 			return s
@@ -74,7 +99,7 @@ func (d Display) ExtraModes() []Size {
 		scale = 2
 	}
 	var out []Size
-	for _, s := range d.AspectOf().Sizes() {
+	for _, s := range d.AspectOf().Sizes(d.HiDPI) {
 		p := Size{s.W * scale, s.H * scale}
 		if p.W > maxW || p.H > maxH || (p.W == maxW && p.H == maxH) {
 			continue

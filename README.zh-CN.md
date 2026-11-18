@@ -32,9 +32,9 @@ DisplayExt 只做这一件事，并且全部在菜单栏里完成。
 
 ## 功能
 
-- **任意宽高比的虚拟显示器。** 内置 4:3（iPad Pro 12.9/13 英寸）、16:10、16:9、3:2、21:9
-  预设，也可以自定义任意比例，例如 11 英寸 iPad Pro 的 2420 : 1668。
-- **HiDPI。** 显示为 2048 × 1536，以 4096 × 3072 像素渲染。
+- **与连接所用的设备同形。** 从约 800 款 iPad 和手机中按名称选择，横向或竖向，显示器便是它的形状；
+  手机上会为 UU远程 的工具栏留出位置。其他屏幕可选 4:3、16:10、16:9、3:2、21:9，或任意自定义比例。
+- **HiDPI。** 显示为 2048 × 1536，以 4096 × 3072 像素渲染。macOS 无法提供 HiDPI 的过小尺寸不会列出。
 - **任意刷新率**，范围 1–240 Hz，并提供最高 144 Hz 的预设。
 - **随 UU远程 挂载。** 显示器可以跟随 UU远程 会话：会话连接时挂载，会话结束几秒后卸载。
 - **可在会话期间关闭其他屏幕。** UU远程 会话连接且显示器已挂载时，可以让这台 Mac 的其他屏幕变黑，窗口会移到虚拟显示器上。会话结束时屏幕会恢复，DisplayExt 意外退出时也会。没有会话时挂载显示器，其他屏幕保持开启，你仍然看得到自己在做什么。
@@ -61,11 +61,16 @@ DisplayExt 会自动保持最新：启动几秒后及此后每 4 小时检查一
 ## 使用
 
 1. 打开 DisplayExt，它的图标会出现在菜单栏中；选择 **设置…**。
-2. 首次启动时会添加一个名为 **iPad** 的显示器：4:3，显示为 2048 × 1536，HiDPI，60 Hz，挂载方式为
-   **随 UU远程**。你可以修改它，也可以用 **添加显示器** 再添加更多。
+2. 首次启动时会添加一个名为 **iPad** 的显示器，对应横向的 13 英寸 iPad Pro：显示为 2048 × 1536，
+   HiDPI，60 Hz，挂载方式为 **随 UU远程**。在 **设备** 中选择你自己的设备，或用 **添加显示器** 再添加更多。
 3. 在 iPad 上用 UU远程 连接这台 Mac。DisplayExt 会在几秒内挂载显示器；在 UU远程 的屏幕切换中选择它即可。
    断开连接后，显示器会被卸载。
 4. 想手动挂载时，在菜单中勾选显示器，或在设置中点按 **挂载**。挂载方式为 **手动** 的显示器会在下次启动时恢复之前的挂载状态。
+
+在 **设备** 中可以按名称搜索，例如“ipad pro 11”或“17 pro max”，也可以按品牌搜索，例如“华为”。
+手机请选择 **竖向**，显示器会恰好落在 UU远程 的工具栏之间。
+
+<img src="docs/images/settings-picker.zh-Hans.png" alt="选择设备">
 
 在“通用”页面中可以打开 **登录时打开**、选择界面语言，并查看 UU远程 会话是否已连接。
 
@@ -161,8 +166,9 @@ xcrun notarytool store-credentials DisplayExt --apple-id <id> --team-id <team>
 ## 致谢
 
 虚拟显示器的实现参考了 [go-macos/virtualdisplay](https://github.com/go-macos/virtualdisplay)
-（BSD-3-Clause）和 Chromium 的 `virtual_display_util_mac.mm`。应用基于
-[MyGo](https://github.com/egoist/mygo) 构建。
+（BSD-3-Clause）和 Chromium 的 `virtual_display_util_mac.mm`。设备列表、为 UU远程 工具栏留出的位置和
+HiDPI 的尺寸下限来自 [Snug](https://github.com/zephyr4123/snug)（MIT），其许可证见
+[`internal/devices/NOTICE`](internal/devices/NOTICE)。应用基于 [MyGo](https://github.com/egoist/mygo) 构建。
 
 ## 许可证
 

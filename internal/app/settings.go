@@ -3,11 +3,13 @@ package app
 import (
 	"fmt"
 	"math"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 
 	"displayext/internal/config"
+	"displayext/internal/devices"
 	"displayext/internal/manager"
 	"displayext/internal/uudetect"
 	"displayext/locales"
@@ -54,12 +56,20 @@ type Settings struct {
 	saved   config.Display
 	draft   config.Display
 
+	device           string
 	ratioKey         string
-	ratio            string
+	orientation      int
 	customW, customH float64
-	size             string
+	size             config.Size
+	sizeChoice       string
+	sizeShown        string
 	hz               float64
 	trigger          int
+	autoName         bool
+
+	pickerOpen bool
+	query      string
+	reveal     bool
 
 	login         bool
 	loginErr      string
@@ -67,6 +77,11 @@ type Settings struct {
 	saveErr       string
 	confirmDelete bool
 }
+
+const (
+	landscape = 0
+	portrait  = 1
+)
 
 func NewSettings(b Backend) *Settings {
 	s := &Settings{b: b, login: b.OpenAtLogin()}
@@ -124,10 +139,15 @@ func (s *Settings) syncPick() {
 }
 
 func (s *Settings) syncChoices() {
-	if key, ok := ratioKeyOf(s.ratio); ok {
-		s.ratioKey = key
+	if s.sizeChoice != s.sizeShown {
+		for _, sz := range s.sizeChoices() {
+			if s.sizeLabel(sz) == s.sizeChoice {
+				s.size = sz
+			}
+		}
 	}
-	s.ratio = ratioKeyLabel(s.ratioKey)
+	s.sizeChoice = s.sizeLabel(s.size)
+	s.sizeShown = s.sizeChoice
 	if tag, ok := languageOf(s.language); ok && tag != s.b.Language() {
 		s.b.SetLanguage(tag)
 	}
@@ -135,47 +155,61 @@ func (s *Settings) syncChoices() {
 }
 
 func (s *Settings) load(d config.Display) {
+	a := d.AspectOf()
+	s.orientation = landscape
+	if a.W < a.H {
+		s.orientation = portrait
+	}
+	s.device = ""
+	if m, ok := devices.Lookup(d.Device); ok && m.Aspect(s.orientation == portrait) == a {
+		s.device = d.Device
+	} else {
+		d.Device = ""
+	}
 	s.sel, s.pick, s.general, s.saved, s.draft = d.ID, d.ID, false, d, d
 	s.saveErr = ""
+	s.pickerOpen, s.query = false, ""
 	s.ratioKey = customRatio
-	for _, a := range config.Presets {
-		if a.W == d.AspectW && a.H == d.AspectH {
-			s.ratioKey = a.String()
+	for _, p := range config.Presets {
+		if p == a || (config.Aspect{W: p.H, H: p.W}) == a {
+			s.ratioKey = p.String()
 		}
 	}
-	s.ratio = ratioKeyLabel(s.ratioKey)
 	s.customW, s.customH = float64(d.AspectW), float64(d.AspectH)
-	s.size = config.Size{W: d.Width, H: d.Height}.String()
+	s.size = config.Size{W: d.Width, H: d.Height}
+	s.sizeChoice = s.sizeLabel(s.size)
+	s.sizeShown = s.sizeChoice
 	s.hz = float64(d.RefreshHz)
 	s.trigger = max(0, slices.Index(triggers, d.Trigger))
+	s.autoName = isAutoName(d.Name, d.Device)
 }
 
+func (s *Settings) model() (devices.Model, bool) { return devices.Lookup(s.device) }
+
 func (s *Settings) aspect() config.Aspect {
+	if m, ok := s.model(); ok {
+		return m.Aspect(s.orientation == portrait)
+	}
+	if s.ratioKey == customRatio {
+		return config.Aspect{W: int(math.Round(s.customW)), H: int(math.Round(s.customH))}
+	}
 	for _, a := range config.Presets {
 		if a.String() == s.ratioKey {
+			if s.orientation == portrait {
+				return config.Aspect{W: a.H, H: a.W}
+			}
 			return a
 		}
 	}
-	return config.Aspect{W: int(math.Round(s.customW)), H: int(math.Round(s.customH))}
-}
-
-func parseSize(v string) (config.Size, bool) {
-	w, h, ok := strings.Cut(v, "×")
-	if !ok {
-		return config.Size{}, false
-	}
-	wi, err1 := strconv.Atoi(w)
-	hi, err2 := strconv.Atoi(h)
-	return config.Size{W: wi, H: hi}, err1 == nil && err2 == nil
+	return config.Presets[0]
 }
 
 func (s *Settings) compose() config.Display {
 	d := s.draft
 	a := s.aspect()
+	d.Device = s.device
 	d.AspectW, d.AspectH = a.W, a.H
-	if sz, ok := parseSize(s.size); ok {
-		d.Width, d.Height = sz.W, sz.H
-	}
+	d.Width, d.Height = s.size.W, s.size.H
 	d.RefreshHz = int(math.Round(s.hz))
 	d.Trigger = triggers[s.trigger]
 	d.Name = strings.TrimSpace(d.Name)
@@ -184,25 +218,104 @@ func (s *Settings) compose() config.Display {
 
 func (s *Settings) dirty() bool { return s.sel != "" && s.compose() != s.saved }
 
-func (s *Settings) sizeOptions() []string {
-	var out []string
-	for _, sz := range s.aspect().Sizes() {
-		out = append(out, sz.String())
+func (s *Settings) native() (config.Size, bool) {
+	m, ok := s.model()
+	if !ok {
+		return config.Size{}, false
 	}
-	if s.size != "" && !slices.Contains(out, s.size) {
-		out = append([]string{s.size}, out...)
+	n, ok := m.Native(s.orientation == portrait)
+	return n, ok && config.Aspect(n).Valid()
+}
+
+func (s *Settings) sizeChoices() []config.Size {
+	out := s.aspect().Sizes(s.draft.HiDPI)
+	if n, ok := s.native(); ok && !slices.Contains(out, n) {
+		d := s.compose()
+		d.Width, d.Height = n.W, n.H
+		if d.Check() == config.NoProblem {
+			out = append(out, n)
+		}
+	}
+	if s.size.W > 0 && !slices.Contains(out, s.size) {
+		out = append(out, s.size)
+	}
+	slices.SortFunc(out, func(a, b config.Size) int { return max(a.W, a.H) - max(b.W, b.H) })
+	return out
+}
+
+func (s *Settings) sizeLabel(sz config.Size) string {
+	text := fmt.Sprintf("%d × %d", sz.W, sz.H)
+	if n, ok := s.native(); ok && n == sz {
+		m, _ := s.model()
+		return locales.SizeNative(text, m.ShortName())
+	}
+	return text
+}
+
+func (s *Settings) sizeOptions() []string {
+	sizes := s.sizeChoices()
+	out := make([]string, len(sizes))
+	for i, sz := range sizes {
+		out[i] = s.sizeLabel(sz)
 	}
 	return out
 }
 
+func (s *Settings) defaultSize() config.Size {
+	a := s.aspect()
+	if m, ok := s.model(); ok && m.Kind == devices.Phone {
+		if sizes := a.Sizes(s.draft.HiDPI); len(sizes) > 0 {
+			return sizes[0]
+		}
+	}
+	return a.DefaultSize()
+}
+
 func (s *Settings) ratioChanged() {
 	if a := s.aspect(); a.Valid() {
-		s.size = a.DefaultSize().String()
+		s.size = s.defaultSize()
 	}
 }
 
+func (s *Settings) chooseDevice(m devices.Model) {
+	s.device, s.ratioKey = m.ID(), ""
+	s.orientation = landscape
+	if m.Kind == devices.Phone {
+		s.orientation = portrait
+	}
+	s.pickerOpen, s.query = false, ""
+	s.ratioChanged()
+	if s.autoName {
+		s.draft.Name = uniqueName(s.b.Displays(), m.ShortName(), s.sel)
+	}
+}
+
+func (s *Settings) choosePreset(a config.Aspect) {
+	s.device, s.ratioKey, s.orientation = "", a.String(), landscape
+	s.pickerOpen, s.query = false, ""
+	s.ratioChanged()
+}
+
+func (s *Settings) chooseCustom() {
+	a := s.aspect()
+	s.device, s.ratioKey = "", customRatio
+	s.customW, s.customH = float64(a.W), float64(a.H)
+	s.pickerOpen, s.query = false, ""
+}
+
+func (s *Settings) orientationChanged() {
+	if s.ratioKey == customRatio && s.device == "" {
+		return
+	}
+	s.ratioChanged()
+}
+
 func (s *Settings) addDisplay() {
-	d := config.NewDisplay(nextName(s.b.Displays()), config.Presets[0])
+	d := config.NewDisplay("", config.Presets[0])
+	d.Device = config.DefaultDevice
+	if m, ok := devices.Lookup(d.Device); ok {
+		d.Name = uniqueName(s.b.Displays(), m.ShortName(), d.ID)
+	}
 	if err := s.b.Save(d); err != nil {
 		s.saveErr = err.Error()
 		return
@@ -210,14 +323,32 @@ func (s *Settings) addDisplay() {
 	s.load(d)
 }
 
-func nextName(ds []config.Display) string {
+var genericName = regexp.MustCompile(`^(Virtual Display|iPad)( \d+)?$`)
+
+func isAutoName(name, device string) bool {
+	if name == "" || genericName.MatchString(name) {
+		return true
+	}
+	if m, ok := devices.Lookup(device); ok {
+		base := m.ShortName()
+		return name == base || strings.HasPrefix(name, base+" ") && isNumber(strings.TrimPrefix(name, base+" "))
+	}
+	return false
+}
+
+func isNumber(s string) bool {
+	_, err := strconv.Atoi(s)
+	return err == nil
+}
+
+func uniqueName(ds []config.Display, base, self string) string {
 	taken := func(n string) bool {
-		return slices.ContainsFunc(ds, func(d config.Display) bool { return d.Name == n })
+		return slices.ContainsFunc(ds, func(d config.Display) bool { return d.ID != self && d.Name == n })
 	}
 	for i := 1; ; i++ {
-		n := "Virtual Display"
+		n := base
 		if i > 1 {
-			n = fmt.Sprintf("Virtual Display %d", i)
+			n = fmt.Sprintf("%s %d", base, i)
 		}
 		if !taken(n) {
 			return n
@@ -350,14 +481,23 @@ func (s *Settings) displayPage(c *ui.Context, p palette) {
 
 	section(c, p, locales.SectionDisplay(), func() {
 		row(c, p, true, locales.FieldName(), "", func() {
-			ui.TextInput(c.Key("name"), &s.draft.Name).Width(240).Label(locales.FieldName())
-		})
-		row(c, p, false, locales.FieldAspect(), "", func() {
-			if ui.Select(c.Key("ratio"), &s.ratio, ratioOptions()).Width(240).Label(locales.FieldAspect()).Changed() {
-				s.ratioChanged()
+			if ui.TextInput(c.Key("name"), &s.draft.Name).Width(240).Label(locales.FieldName()).Changed() {
+				s.autoName = false
 			}
 		})
-		if s.ratioKey == customRatio {
+		m, isDevice := s.model()
+		row(c, p, false, locales.FieldDevice(), deviceHelp(m, isDevice), func() {
+			s.devicePicker(c, p)
+		})
+		if isDevice || s.ratioKey != customRatio {
+			row(c, p, false, locales.FieldOrientation(), "", func() {
+				if ui.Segmented(c.Key("orientation"), &s.orientation, locales.OrientationLandscape(), locales.OrientationPortrait()).
+					Label(locales.FieldOrientation()).Changed() {
+					s.orientationChanged()
+				}
+			})
+		}
+		if s.ratioKey == customRatio && !isDevice {
 			row(c, p, false, locales.FieldCustomRatio(), locales.HelpCustomRatio(), func() {
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 					w := ui.NumberInput(c.Key("ratioW"), &s.customW, 1, 10000, 1).Width(112).Label(locales.LabelRatioWidth()).Changed()
@@ -370,7 +510,7 @@ func (s *Settings) displayPage(c *ui.Context, p palette) {
 			})
 		}
 		row(c, p, false, locales.FieldLooksLike(), locales.HelpLooksLike(), func() {
-			ui.Select(c.Key("size"), &s.size, s.sizeOptions()).Width(240).Label(locales.FieldLooksLike())
+			ui.Select(c.Key("size"), &s.sizeChoice, s.sizeOptions()).Width(240).Label(locales.FieldLooksLike())
 		})
 		pw, ph := d.PixelSize()
 		row(c, p, false, locales.FieldHiDPI(), locales.HelpHiDPI(pw, ph), func() {
@@ -426,6 +566,9 @@ func (s *Settings) hero(c *ui.Context, p palette, d config.Display) {
 			preview(c, p, d, mounted)
 			ui.Column(c).Grow(1).Gap(7).Children(func() {
 				ui.Text(c, s.saved.Name).FontSize(19).Bold().SingleLine()
+				if m, ok := devices.Lookup(s.saved.Device); ok {
+					ui.Text(c, modelTitle(m)).FontSize(12).TextColor(t.TextMuted).SingleLine().MarginY(-3)
+				}
 				switch {
 				case st.Busy:
 					pill(c, locales.Working(), t.TextMuted)

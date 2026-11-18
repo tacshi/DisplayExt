@@ -20,12 +20,14 @@ func TestSnapshot(t *testing.T) {
 		dark    bool
 		mounted bool
 		general bool
+		picker  bool
 	}{
-		{"settings-light", false, true, false},
-		{"settings-dark", true, true, false},
-		{"settings-unmounted", false, false, false},
-		{"general-light", false, false, true},
-		{"general-dark", true, false, true},
+		{"settings-light", false, true, false, false},
+		{"settings-dark", true, true, false, false},
+		{"settings-unmounted", false, false, false, false},
+		{"settings-picker", false, false, false, true},
+		{"general-light", false, false, true, false},
+		{"general-dark", true, false, true, false},
 	}
 	defer i18n.SetLocaleFunc(func() string { return "" })
 	for _, lang := range []string{"en", "zh-Hans"} {
@@ -37,6 +39,7 @@ func TestSnapshot(t *testing.T) {
 			if shot.general {
 				s.showGeneral()
 			}
+			s.pickerOpen = shot.picker
 			tt := ui.NewTesterWith(s.View, 820, 830, ui.TesterOptions{Dark: shot.dark})
 			tt.SetLocale(lang)
 			tt.SetScale(2)

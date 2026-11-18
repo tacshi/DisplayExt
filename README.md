@@ -33,10 +33,12 @@ DisplayExt does just this one job, and does it from the menu bar.
 
 ## Features
 
-- **Virtual displays at any aspect ratio.** Presets for 4:3 (iPad Pro
-  12.9″/13″), 16:10, 16:9, 3:2 and 21:9, or any ratio of your own, such as
-  2420 : 1668 for an 11″ iPad Pro.
-- **HiDPI.** "Looks like" 2048 × 1536, rendered at 4096 × 3072 pixels.
+- **Shaped like the device you connect from.** Pick it by name from about
+  800 iPads and phones, landscape or portrait, and the display takes its
+  shape. On a phone it leaves room for UU远程's toolbars. For anything else,
+  choose 4:3, 16:10, 16:9, 3:2 or 21:9, or any ratio of your own.
+- **HiDPI.** "Looks like" 2048 × 1536, rendered at 4096 × 3072 pixels. Sizes
+  too small for macOS to offer HiDPI are not listed.
 - **Any refresh rate** from 1 to 240 Hz, with presets up to 144 Hz.
 - **Mounts with UU远程.** A display can follow UU远程 sessions: it is mounted
   as a session connects, and unmounted a few seconds after it ends.
@@ -78,15 +80,22 @@ in the menu looks right away and shows the release notes.
 ## Use
 
 1. Open DisplayExt. Its icon appears in the menu bar; choose **Settings…**.
-2. The first launch adds a display named **iPad**: 4:3, looks like
-   2048 × 1536, HiDPI, 60 Hz, mounted **With UU远程**. Change it, or add
-   more with **Add Display**.
+2. The first launch adds a display named **iPad**, for an iPad Pro 13-inch
+   in landscape: looks like 2048 × 1536, HiDPI, 60 Hz, mounted
+   **With UU远程**. Choose your own device under **Device**, or add more
+   displays with **Add Display**.
 3. Connect to the Mac from the iPad with UU远程. DisplayExt mounts the
    display within a few seconds; choose it in UU远程's screen switcher.
    Disconnect, and it is unmounted.
 4. To mount a display by hand, tick it in the menu, or click **Mount** in
    Settings. Displays set to **Manually** remember whether they were mounted
    across launches.
+
+Search **Device** by name, such as "ipad pro 11" or "17 pro max", or by
+brand. For a phone, choose **Portrait**: the display then fits between
+UU远程's toolbars.
+
+<img src="docs/images/settings-picker.png" alt="Choosing a device">
 
 Turn on **Open at login** on the General page, where you can also choose the
 language and see whether a UU远程 session is connected.
@@ -207,7 +216,10 @@ language by adding its catalog, then check it with `go tool mygo i18n check`.
 
 The virtual display code follows the approach of
 [go-macos/virtualdisplay](https://github.com/go-macos/virtualdisplay)
-(BSD-3-Clause) and Chromium's `virtual_display_util_mac.mm`. The app is built
+(BSD-3-Clause) and Chromium's `virtual_display_util_mac.mm`. The device list,
+the room left for UU远程's toolbars and the HiDPI limits come from
+[Snug](https://github.com/zephyr4123/snug) (MIT), whose license is in
+[`internal/devices/NOTICE`](internal/devices/NOTICE). The app is built
 with [MyGo](https://github.com/egoist/mygo).
 
 ## License

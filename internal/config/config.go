@@ -35,8 +35,9 @@ const (
 var ErrDamaged = errors.New("the settings file is damaged")
 
 type Display struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Device string `json:"device,omitzero"`
 
 	AspectW int `json:"aspectW"`
 	AspectH int `json:"aspectH"`
@@ -74,8 +75,11 @@ func DefaultUURule() UURule {
 	}
 }
 
+const DefaultDevice = "Apple iPad Pro 13-inch (M5)"
+
 func Default() Config {
 	ipad := NewDisplay("iPad", Presets[0])
+	ipad.Device = DefaultDevice
 	ipad.Width, ipad.Height = 2048, 1536
 	ipad.Trigger = TriggerUU
 	return Config{Displays: []Display{ipad}, UU: DefaultUURule()}
@@ -126,6 +130,7 @@ const (
 	BadName
 	BadAspect
 	BadSize
+	BadHiDPI
 	BadRefresh
 	BadSerial
 	BadTrigger
@@ -146,6 +151,8 @@ func (d Display) Check() Problem {
 		return BadAspect
 	case !sizeOK(d.Width, d.Height):
 		return BadSize
+	case d.HiDPI && !HiDPIOK(d.Width, d.Height):
+		return BadHiDPI
 	case d.RefreshHz < MinRefresh || d.RefreshHz > MaxRefresh:
 		return BadRefresh
 	case d.Serial == 0:
@@ -167,6 +174,9 @@ func (d Display) Validate() error {
 	case BadSize:
 		return fmt.Errorf("size %d×%d is not at least %d×%d points, either way round, with no side over %d",
 			d.Width, d.Height, MinPoints, MinShortPoints, MaxPoints)
+	case BadHiDPI:
+		return fmt.Errorf("HiDPI needs at least %d×%d points, either way round, not %d×%d",
+			MinHiDPILong, MinHiDPIShort, d.Width, d.Height)
 	case BadRefresh:
 		return fmt.Errorf("refresh rate %d Hz is outside %d–%d Hz", d.RefreshHz, MinRefresh, MaxRefresh)
 	case BadSerial:

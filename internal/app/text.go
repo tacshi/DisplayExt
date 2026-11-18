@@ -22,9 +22,12 @@ func languageLabel(tag string) string {
 	return i18n.Autonym(tag)
 }
 
-func uuLabel(st uudetect.State) string {
-	switch st {
+func uuLabel(st uudetect.Status, screen string) string {
+	switch st.State {
 	case uudetect.Connected:
+		if screen != "" {
+			return locales.UuConnectedShowing(screen)
+		}
 		return locales.UuConnected()
 	case uudetect.Idle:
 		return locales.UuIdle()

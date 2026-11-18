@@ -21,7 +21,8 @@ type Backend interface {
 	Displays() []config.Display
 	Status(id string) manager.Status
 	Wanted(id string) bool
-	UUState() uudetect.State
+	UUStatus() uudetect.Status
+	UUScreen() string
 	Unavailable() string
 	SettingsReset() string
 
@@ -419,13 +420,31 @@ func (s *Settings) title() string {
 	return locales.SidebarDisplays()
 }
 
+func (s *Settings) showingThis() bool {
+	st := s.b.Status(s.sel)
+	uu := s.b.UUStatus()
+	return st.Mounted && uu.Showing != 0 && uu.Showing == st.DisplayID
+}
+
+func (s *Settings) needsSwitch() bool {
+	uu := s.b.UUStatus()
+	return s.b.Status(s.sel).Mounted && uu.State == uudetect.Connected && uu.Showing != 0 && !s.showingThis()
+}
+
 func (s *Settings) summary() string {
 	if s.saved.Trigger != config.TriggerUU {
 		return locales.SummaryManual()
 	}
-	switch s.b.UUState() {
+	uu := s.b.UUStatus()
+	switch uu.State {
 	case uudetect.Connected:
-		return locales.SummaryUUConnected()
+		switch {
+		case uu.Showing == 0:
+			return locales.SummaryUUConnected()
+		case s.showingThis():
+			return locales.SummaryUUShowingThis()
+		}
+		return locales.SummaryUUShowingOther(s.b.UUScreen())
 	case uudetect.Idle:
 		return locales.SummaryUUIdle()
 	}
@@ -580,6 +599,9 @@ func (s *Settings) hero(c *ui.Context, p palette, d config.Display) {
 					pill(c, locales.StatusNotMounted(), t.TextMuted)
 				}
 				ui.Text(c, s.summary()).FontSize(12).TextColor(t.TextMuted)
+				if s.needsSwitch() {
+					ui.Text(c, locales.HintChooseInUU(s.saved.Name)).FontSize(12).FontWeight(600).TextColor(t.Accent)
+				}
 			})
 			label := locales.ButtonMount()
 			button := ui.PrimaryButton
@@ -624,15 +646,15 @@ func (s *Settings) generalPage(c *ui.Context, p palette) {
 		})
 	})
 	section(c, p, locales.SectionUU(), func() {
-		st := s.b.UUState()
+		st := s.b.UUStatus()
 		row(c, p, true, locales.FieldSession(), locales.HelpSession(), func() {
 			ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
 				col := t.TextMuted
-				if st == uudetect.Connected {
+				if st.State == uudetect.Connected {
 					col = t.Success
 				}
 				dot(c, col)
-				ui.Text(c, uuLabel(st)).TextColor(t.TextMuted)
+				ui.Text(c, uuLabel(st, s.b.UUScreen())).TextColor(t.TextMuted)
 			})
 		})
 	})

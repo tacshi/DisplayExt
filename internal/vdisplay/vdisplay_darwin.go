@@ -510,3 +510,27 @@ func setMode(id uint32, match func(Mode) bool, hz float64) error {
 	}
 	return nil
 }
+
+func ScreenName(id uint32) string {
+	if load() != nil || objc.Load(objc.AppKit) != nil {
+		return ""
+	}
+	var name string
+	objc.AutoreleasePool(func() {
+		screens := objc.ClassID("NSScreen").Send(objc.Sel("screens"))
+		key := objc.NSString("NSScreenNumber")
+		n := int(screens.Send(objc.Sel("count")))
+		for i := range n {
+			screen := screens.Send(objc.Sel("objectAtIndex:"), i)
+			number := screen.Send(objc.Sel("deviceDescription")).Send(objc.Sel("objectForKey:"), key)
+			if number == 0 || uint32(number.Send(objc.Sel("unsignedIntValue"))) != id {
+				continue
+			}
+			if screen.Send(objc.Sel("respondsToSelector:"), objc.Sel("localizedName")) != 0 {
+				name = objc.GoString(screen.Send(objc.Sel("localizedName")))
+			}
+			return
+		}
+	})
+	return name
+}

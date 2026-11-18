@@ -50,3 +50,5 @@ func Blackout([]uint32) error { return errUnsupported }
 func RestoreColors() {}
 
 func isBlack(uint32) bool { return false }
+
+func ScreenName(uint32) string { return "" }

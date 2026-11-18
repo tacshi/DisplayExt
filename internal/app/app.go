@@ -15,6 +15,7 @@ import (
 	"displayext/internal/autoswitch"
 	"displayext/internal/config"
 	"displayext/internal/manager"
+	"displayext/internal/uucapture"
 	"displayext/internal/uudetect"
 	"displayext/internal/vdisplay"
 	"displayext/locales"
@@ -33,9 +34,10 @@ type App struct {
 	configKept  string
 	unavailable string
 
-	mgr *manager.Manager
-	sw  *autoswitch.Switcher
-	uu  uudetect.State
+	mgr      *manager.Manager
+	sw       *autoswitch.Switcher
+	uu       uudetect.Status
+	uuScreen string
 
 	tray     *mygo.Tray
 	win      *mygo.Window
@@ -162,8 +164,16 @@ func (a *App) ready() {
 		Assertion: a.cfg.UU.Assertion,
 		Grace:     time.Duration(a.cfg.UU.GraceSeconds) * time.Second,
 	}
-	go uudetect.Watch(ctx, rule, 2*time.Second,
-		func(st uudetect.State) { mygo.RunOnMain(func() { a.uuChanged(st) }) },
+	capture := uucapture.NewWatcher(func() int32 {
+		snap, err := uudetect.TakeSnapshot(rule.Process)
+		if err != nil {
+			return 0
+		}
+		return snap.Server()
+	}, log.Printf)
+	go capture.Run(ctx)
+	go uudetect.Watch(ctx, rule, 2*time.Second, capture,
+		func(st uudetect.Status) { mygo.RunOnMain(func() { a.uuChanged(st) }) },
 		func(err error) { log.Println("uudetect:", err) })
 
 	a.startUpdates()
@@ -209,10 +219,15 @@ func (a *App) changed() {
 	}
 }
 
-func (a *App) uuChanged(st uudetect.State) {
-	log.Println("UU远程:", st)
+func (a *App) uuChanged(st uudetect.Status) {
 	a.uu = st
-	if a.sw.SetConnected(st == uudetect.Connected) {
+	a.uuScreen = a.screenName(st.Showing)
+	if st.Showing != 0 {
+		log.Printf("UU远程: %s, showing display %d (%s)", st.State, st.Showing, a.uuScreen)
+	} else {
+		log.Println("UU远程:", st.State)
+	}
+	if a.sw.SetConnected(st.State == uudetect.Connected) {
 		a.apply()
 		return
 	}
@@ -235,7 +250,7 @@ func (a *App) saveConfig() error {
 
 func (a *App) menu() *mygo.Menu {
 	items := []*mygo.MenuItem{
-		{Label: locales.MenuUUStatus(uuLabel(a.uu)), Disabled: true},
+		{Label: locales.MenuUUStatus(uuLabel(a.uu, a.uuScreen)), Disabled: true},
 		mygo.Separator(),
 	}
 	if a.unavailable != "" {
@@ -298,7 +313,8 @@ func subtitle(d config.Display, st manager.Status) string {
 func (a *App) Displays() []config.Display      { return a.cfg.Displays }
 func (a *App) Status(id string) manager.Status { return a.mgr.Status(id) }
 func (a *App) SettingsReset() string           { return a.configKept }
-func (a *App) UUState() uudetect.State         { return a.uu }
+func (a *App) UUStatus() uudetect.Status       { return a.uu }
+func (a *App) UUScreen() string                { return a.uuScreen }
 func (a *App) Unavailable() string             { return a.unavailable }
 func (a *App) Version() string                 { return mygo.App.Version() }
 func (a *App) LogFile() string                 { return LogPath(a.name) }
@@ -307,6 +323,21 @@ func (a *App) Language() string                { return mygo.App.ChosenLocale() 
 func (a *App) SetLanguage(tag string)          { mygo.App.SetLocale(tag) }
 func (a *App) OpenAtLogin() bool               { return mygo.App.OpenAtLogin() }
 func (a *App) SetOpenAtLogin(on bool) error    { return mygo.App.SetOpenAtLogin(on) }
+
+func (a *App) screenName(id uint32) string {
+	if id == 0 {
+		return ""
+	}
+	for _, d := range a.cfg.Displays {
+		if a.mgr.Status(d.ID).DisplayID == id {
+			return d.Name
+		}
+	}
+	if name := vdisplay.ScreenName(id); name != "" {
+		return name
+	}
+	return locales.ScreenNumber(int(id))
+}
 
 func (a *App) Wanted(id string) bool {
 	d, ok := a.cfg.Display(id)

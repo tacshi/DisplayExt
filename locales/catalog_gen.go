@@ -174,6 +174,26 @@ func (msgs Messages) UuNotRunning() string {
 	return Catalog.Format(msgs.locale, "uuNotRunning", nil)
 }
 
+// UuConnectedShowing says "Connected · showing {screen}"
+// in the language the app shows.
+func UuConnectedShowing(screen string) string { return In(i18n.Locale()).UuConnectedShowing(screen) }
+
+// UuConnectedShowing says "Connected · showing {screen}"
+// in the language of msgs.
+func (msgs Messages) UuConnectedShowing(screen string) string {
+	return Catalog.Format(msgs.locale, "uuConnectedShowing", map[string]any{"screen": screen})
+}
+
+// ScreenNumber says "Display {id, number, ::group-off}"
+// in the language the app shows.
+func ScreenNumber(id int) string { return In(i18n.Locale()).ScreenNumber(id) }
+
+// ScreenNumber says "Display {id, number, ::group-off}"
+// in the language of msgs.
+func (msgs Messages) ScreenNumber(id int) string {
+	return Catalog.Format(msgs.locale, "screenNumber", map[string]any{"id": id})
+}
+
 // SidebarDisplays says "Displays"
 // in the language the app shows.
 func SidebarDisplays() string { return In(i18n.Locale()).SidebarDisplays() }
@@ -812,6 +832,38 @@ func SummaryUUNotRunning() string { return In(i18n.Locale()).SummaryUUNotRunning
 // in the language of msgs.
 func (msgs Messages) SummaryUUNotRunning() string {
 	return Catalog.Format(msgs.locale, "summaryUUNotRunning", nil)
+}
+
+// SummaryUUShowingThis says "Follows UU远程 · showing this display"
+// in the language the app shows.
+func SummaryUUShowingThis() string { return In(i18n.Locale()).SummaryUUShowingThis() }
+
+// SummaryUUShowingThis says "Follows UU远程 · showing this display"
+// in the language of msgs.
+func (msgs Messages) SummaryUUShowingThis() string {
+	return Catalog.Format(msgs.locale, "summaryUUShowingThis", nil)
+}
+
+// SummaryUUShowingOther says "Follows UU远程 · showing {screen}"
+// in the language the app shows.
+func SummaryUUShowingOther(screen string) string {
+	return In(i18n.Locale()).SummaryUUShowingOther(screen)
+}
+
+// SummaryUUShowingOther says "Follows UU远程 · showing {screen}"
+// in the language of msgs.
+func (msgs Messages) SummaryUUShowingOther(screen string) string {
+	return Catalog.Format(msgs.locale, "summaryUUShowingOther", map[string]any{"screen": screen})
+}
+
+// HintChooseInUU says "To see this display, choose “{name}” in UU远程's screen switcher."
+// in the language the app shows.
+func HintChooseInUU(name string) string { return In(i18n.Locale()).HintChooseInUU(name) }
+
+// HintChooseInUU says "To see this display, choose “{name}” in UU远程's screen switcher."
+// in the language of msgs.
+func (msgs Messages) HintChooseInUU(name string) string {
+	return Catalog.Format(msgs.locale, "hintChooseInUU", map[string]any{"name": name})
 }
 
 // ButtonMount says "Mount"

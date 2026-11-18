@@ -15,6 +15,8 @@
   "uuConnected": "已连接",
   "uuIdle": "未连接",
   "uuNotRunning": "未运行",
+  "uuConnectedShowing": "已连接 · 正在显示 {screen}",
+  "screenNumber": "显示器 {id, number, ::group-off}",
 
   "sidebarDisplays": "显示器",
   "sidebarApp": "应用",
@@ -85,6 +87,9 @@
   "summaryUUConnected": "跟随 UU远程 · 会话已连接",
   "summaryUUIdle": "跟随 UU远程 · 无会话",
   "summaryUUNotRunning": "跟随 UU远程 · UU远程 未运行",
+  "summaryUUShowingThis": "跟随 UU远程 · 正在显示此显示器",
+  "summaryUUShowingOther": "跟随 UU远程 · 正在显示 {screen}",
+  "hintChooseInUU": "要查看此显示器，请在 UU远程 的屏幕切换中选择“{name}”。",
   "buttonMount": "挂载",
   "buttonUnmount": "卸载",
   "modeNotApplied": "未能应用显示模式：{message}",

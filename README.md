@@ -120,7 +120,13 @@ language and see whether a UU远程 session is connected.
   third-party apps. While a session is connected, UU远程's `UURemoteServer`
   holds a power assertion named `UURemote Disable Display Sleep`; DisplayExt
   looks for it every two seconds and waits five seconds after it goes before
-  unmounting, so a brief reconnect leaves the display alone.
+  unmounting, so a brief reconnect leaves the display alone. It also follows
+  `UURemoteServer`'s screen capture in the system log, as
+  [Snug](https://github.com/zephyr4123/snug) does: a session counts from the
+  moment streaming starts, and Settings shows which screen UU远程 is showing,
+  with a reminder to choose the virtual display in UU远程 when it is another.
+  When DisplayExt opens during a session, it reads the last four hours of the
+  log to catch up.
 - **Other screens.** Rather than switching them off, DisplayExt mirrors the
   Mac's own screens to the virtual display and sets them to black. A screen
   that disappears ends any screen recording tied to it, and UU远程 records the

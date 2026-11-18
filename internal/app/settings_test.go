@@ -14,6 +14,8 @@ import (
 )
 
 type fakeBackend struct {
+	uu       uudetect.Status
+	screen   string
 	displays []config.Display
 	wanted   map[string]bool
 	failed   map[string]string
@@ -23,7 +25,8 @@ type fakeBackend struct {
 }
 
 func newFake() *fakeBackend {
-	return &fakeBackend{displays: config.Default().Displays, wanted: map[string]bool{}, failed: map[string]string{}}
+	return &fakeBackend{displays: config.Default().Displays, wanted: map[string]bool{}, failed: map[string]string{},
+		uu: uudetect.Status{State: uudetect.Idle}}
 }
 
 func (f *fakeBackend) Displays() []config.Display { return f.displays }
@@ -35,7 +38,8 @@ func (f *fakeBackend) Status(id string) manager.Status {
 }
 func (f *fakeBackend) Wanted(id string) bool         { return f.wanted[id] }
 func (f *fakeBackend) SettingsReset() string         { return f.reset }
-func (f *fakeBackend) UUState() uudetect.State       { return uudetect.Idle }
+func (f *fakeBackend) UUStatus() uudetect.Status     { return f.uu }
+func (f *fakeBackend) UUScreen() string              { return f.screen }
 func (f *fakeBackend) Unavailable() string           { return "" }
 func (f *fakeBackend) OpenAtLogin() bool             { return f.login }
 func (f *fakeBackend) SetOpenAtLogin(on bool) error  { f.login = on; return nil }
@@ -460,5 +464,33 @@ func TestHiDPIProblem(t *testing.T) {
 	tt.Frame()
 	if !tt.HasText("HiDPI needs at least 800 × 525 points, either way round.") {
 		t.Errorf("no HiDPI problem: %q", tt.Texts())
+	}
+}
+
+func TestSummaryShowsWhichScreenUUShows(t *testing.T) {
+	f := newFake()
+	id := f.displays[0].ID
+	f.wanted[id] = true
+	f.uu = uudetect.Status{State: uudetect.Connected, Showing: 1}
+	f.screen = "Built-in Retina Display"
+	s := NewSettings(f)
+	tt := newTester(s)
+	for _, want := range []string{"Follows UU远程 · showing Built-in Retina Display",
+		"To see this display, choose “iPad” in UU远程's screen switcher."} {
+		if !tt.HasText(want) {
+			t.Errorf("missing %q: %q", want, tt.Texts())
+		}
+	}
+	f.uu.Showing, f.screen = 7, "iPad"
+	tt.Frame()
+	if !tt.HasText("Follows UU远程 · showing this display") || tt.HasText("To see this display, choose “iPad” in UU远程's screen switcher.") {
+		t.Errorf("showing this display: %q", tt.Texts())
+	}
+	if err := tt.Click("General"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("Connected · showing iPad") {
+		t.Errorf("session row: %q", tt.Texts())
 	}
 }

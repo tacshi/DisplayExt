@@ -38,7 +38,7 @@ func (s *Settings) devicePicker(c *ui.Context, p palette) {
 		ui.Icon(c, iconUpDown).FontSize(11).TextColor(t.TextMuted)
 	})
 	ui.Popover(c, anchor, &s.pickerOpen, func() {
-		ui.Column(c).Width(340).Gap(8).Children(func() {
+		ui.Column(c).Width(340).Gap(8).MinHeight(0).Children(func() {
 			ui.SearchField(c.Key("deviceSearch"), &s.query).Label(locales.SearchDevices()).
 				Placeholder(locales.SearchDevices()).AutoFocus()
 			ui.Scroll(c.Key("deviceList")).MaxHeight(380).Children(func() {

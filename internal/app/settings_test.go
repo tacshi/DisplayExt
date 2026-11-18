@@ -428,6 +428,38 @@ func TestDevicePicker(t *testing.T) {
 	}
 }
 
+func TestDevicePickerFitsShortWindow(t *testing.T) {
+	for _, height := range []int{520, 830} {
+		s := NewSettings(newFake())
+		tt := ui.NewTester(s.View, 820, height)
+		clickRole(t, tt, ui.RoleButton, "Device")
+		tt.Frame()
+		var panel, list ui.Rect
+		for _, a := range tt.AccessAll() {
+			switch a.Role {
+			case ui.RolePopup:
+				panel = a.Bounds
+			case ui.RoleScroll:
+				if a.Bounds.W == 340 {
+					list = a.Bounds
+				}
+			}
+		}
+		if panel.H == 0 || list.H == 0 {
+			t.Fatalf("height %d: no picker panel %+v or list %+v", height, panel, list)
+		}
+		if panel.Y < 0 || panel.Y+panel.H > float32(height) {
+			t.Errorf("height %d: the panel %+v leaves the window", height, panel)
+		}
+		if list.Y+list.H > panel.Y+panel.H {
+			t.Errorf("height %d: the list %+v runs past the panel %+v", height, list, panel)
+		}
+		if height == 830 && list.H != 380 {
+			t.Errorf("a tall window shortened the list to %v", list.H)
+		}
+	}
+}
+
 func TestDevicePickerKeepsTypedName(t *testing.T) {
 	f := newFake()
 	s := NewSettings(f)

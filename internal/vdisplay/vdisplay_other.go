@@ -52,3 +52,5 @@ func RestoreColors() {}
 func isBlack(uint32) bool { return false }
 
 func ScreenName(uint32) string { return "" }
+
+func (d *Display) Reapply(Spec, Options) error { return errUnsupported }

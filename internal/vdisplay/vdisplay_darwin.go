@@ -357,8 +357,12 @@ func create(s Spec, o Options) (*Display, error) {
 		}
 		defer desc.Send(objc.Sel("release"))
 		desc.Send(objc.Sel("setName:"), objc.NSString(s.Name))
-		desc.Send(objc.Sel("setMaxPixelsWide:"), uint32(s.PixelsW))
-		desc.Send(objc.Sel("setMaxPixelsHigh:"), uint32(s.PixelsH))
+		maxW, maxH := s.PixelsW, s.PixelsH
+		if s.MaxPixelsW > 0 && s.MaxPixelsH > 0 {
+			maxW, maxH = s.MaxPixelsW, s.MaxPixelsH
+		}
+		desc.Send(objc.Sel("setMaxPixelsWide:"), uint32(maxW))
+		desc.Send(objc.Sel("setMaxPixelsHigh:"), uint32(maxH))
 		objc.Send[objc.ID](desc, objc.Sel("setSizeInMillimeters:"), cgSize{s.SizeMMW, s.SizeMMH})
 		desc.Send(objc.Sel("setVendorID:"), uint32(VendorID))
 		desc.Send(objc.Sel("setProductID:"), uint32(ProductID))
@@ -381,29 +385,8 @@ func create(s Spec, o Options) (*Display, error) {
 			return
 		}
 
-		settings := objc.ClassID("CGVirtualDisplaySettings").Send(objc.Sel("alloc")).Send(objc.Sel("init"))
+		settings := newSettings(s, o)
 		defer settings.Send(objc.Sel("release"))
-		modes := objc.ClassID("NSMutableArray").Send(objc.Sel("array"))
-		sizes := append([]config.Size{{W: s.PixelsW, H: s.PixelsH}}, s.Extra...)
-		for _, m := range slices.Compact(sizes) {
-			alloc := objc.ClassID("CGVirtualDisplayMode").Send(objc.Sel("alloc"))
-			var mode objc.ID
-			if o.TransferFunction > 0 {
-				mode = objc.Send[objc.ID](alloc, objc.Sel("initWithWidth:height:refreshRate:transferFunction:"),
-					uint32(m.W), uint32(m.H), float64(s.RefreshHz), uint32(o.TransferFunction-1))
-			} else {
-				mode = objc.Send[objc.ID](alloc, objc.Sel("initWithWidth:height:refreshRate:"),
-					uint32(m.W), uint32(m.H), float64(s.RefreshHz))
-			}
-			modes.Send(objc.Sel("addObject:"), mode)
-			mode.Send(objc.Sel("release"))
-		}
-		settings.Send(objc.Sel("setModes:"), modes)
-		var hidpi uint32
-		if s.HiDPI {
-			hidpi = 1
-		}
-		settings.Send(objc.Sel("setHiDPI:"), hidpi)
 		if !objc.Send[bool](disp, objc.Sel("applySettings:"), settings) {
 			disp.Send(objc.Sel("release"))
 			err = fmt.Errorf("vdisplay: the WindowServer rejected the settings for a %d×%d display", s.PixelsW, s.PixelsH)
@@ -412,6 +395,50 @@ func create(s Spec, o Options) (*Display, error) {
 		d = &Display{obj: disp, id: objc.Send[uint32](disp, objc.Sel("displayID"))}
 	})
 	return d, err
+}
+
+func newSettings(s Spec, o Options) objc.ID {
+	settings := objc.ClassID("CGVirtualDisplaySettings").Send(objc.Sel("alloc")).Send(objc.Sel("init"))
+	modes := objc.ClassID("NSMutableArray").Send(objc.Sel("array"))
+	sizes := append([]config.Size{{W: s.PixelsW, H: s.PixelsH}}, s.Extra...)
+	for _, m := range slices.Compact(sizes) {
+		alloc := objc.ClassID("CGVirtualDisplayMode").Send(objc.Sel("alloc"))
+		var mode objc.ID
+		if o.TransferFunction > 0 {
+			mode = objc.Send[objc.ID](alloc, objc.Sel("initWithWidth:height:refreshRate:transferFunction:"),
+				uint32(m.W), uint32(m.H), float64(s.RefreshHz), uint32(o.TransferFunction-1))
+		} else {
+			mode = objc.Send[objc.ID](alloc, objc.Sel("initWithWidth:height:refreshRate:"),
+				uint32(m.W), uint32(m.H), float64(s.RefreshHz))
+		}
+		modes.Send(objc.Sel("addObject:"), mode)
+		mode.Send(objc.Sel("release"))
+	}
+	settings.Send(objc.Sel("setModes:"), modes)
+	var hidpi uint32
+	if s.HiDPI {
+		hidpi = 1
+	}
+	settings.Send(objc.Sel("setHiDPI:"), hidpi)
+	return settings
+}
+
+func (d *Display) Reapply(s Spec, o Options) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.obj == 0 {
+		return fmt.Errorf("vdisplay: display %d is closed", d.id)
+	}
+	var ok bool
+	objc.AutoreleasePool(func() {
+		settings := newSettings(s, o)
+		defer settings.Send(objc.Sel("release"))
+		ok = objc.Send[bool](d.obj, objc.Sel("applySettings:"), settings)
+	})
+	if !ok {
+		return fmt.Errorf("vdisplay: the WindowServer rejected new settings for display %d", d.id)
+	}
+	return nil
 }
 
 func waitActive(id uint32, timeout time.Duration) bool {

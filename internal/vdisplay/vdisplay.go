@@ -22,13 +22,15 @@ type Spec struct {
 	PointsH int  `json:"pointsH"`
 	HiDPI   bool `json:"hidpi,omitzero"`
 
-	PixelsW   int           `json:"pixelsW"`
-	PixelsH   int           `json:"pixelsH"`
-	RefreshHz int           `json:"refreshHz"`
-	Serial    uint32        `json:"serial"`
-	Extra     []config.Size `json:"extra"`
-	SizeMMW   float64       `json:"sizeMMW"`
-	SizeMMH   float64       `json:"sizeMMH"`
+	PixelsW    int           `json:"pixelsW"`
+	PixelsH    int           `json:"pixelsH"`
+	MaxPixelsW int           `json:"maxPixelsW,omitzero"`
+	MaxPixelsH int           `json:"maxPixelsH,omitzero"`
+	RefreshHz  int           `json:"refreshHz"`
+	Serial     uint32        `json:"serial"`
+	Extra      []config.Size `json:"extra"`
+	SizeMMW    float64       `json:"sizeMMW"`
+	SizeMMH    float64       `json:"sizeMMH"`
 }
 
 func FromConfig(d config.Display) Spec {

@@ -69,6 +69,7 @@ func main() {
 	turnOn := flag.String("turn-on", "", "turn these screens on (JSON)")
 	alone := flag.Bool("screens-alone", false, "test what macOS does when a crash leaves no screen on")
 	offChild := flag.String("screens-child", "", "internal: mount a display, turn these screens off (JSON), then crash")
+	live := flag.Bool("live", false, "test changing a mounted display's size, ratio, refresh rate and HiDPI in place")
 	flag.Parse()
 
 	switch {
@@ -82,6 +83,8 @@ func main() {
 			fmt.Println(err)
 			os.Exit(1)
 		}
+	case *live:
+		os.Exit(onAppLoop(runLive))
 	case *screens:
 		os.Exit(onAppLoop(runScreens))
 	case *alone:

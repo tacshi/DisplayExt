@@ -23,7 +23,13 @@ const (
 	TriggerManual Trigger = "manual"
 
 	TriggerUU Trigger = "uu"
+
+	TriggerRustDesk Trigger = "rustdesk"
 )
+
+var Remotes = []Trigger{TriggerUU, TriggerRustDesk}
+
+func (t Trigger) Remote() bool { return slices.Contains(Remotes, t) }
 
 const (
 	MinPoints      = 640
@@ -57,17 +63,19 @@ type Display struct {
 	Mounted bool `json:"mounted,omitzero"`
 }
 
-type UURule struct {
+type SessionRule struct {
 	Process   string `json:"process"`
+	Arg       string `json:"arg,omitzero"`
 	Assertion string `json:"assertion"`
 
 	GraceSeconds int `json:"graceSeconds"`
 }
 
 type Config struct {
-	Displays []Display `json:"displays"`
-	UU       UURule    `json:"uu"`
-	Devices  []string  `json:"devices,omitzero"`
+	Displays []Display   `json:"displays"`
+	UU       SessionRule `json:"uu"`
+	RustDesk SessionRule `json:"rustdesk"`
+	Devices  []string    `json:"devices,omitzero"`
 }
 
 const MaxDevices = 8
@@ -84,12 +92,34 @@ func (c *Config) SawDevice(name string) bool {
 	return true
 }
 
-func DefaultUURule() UURule {
-	return UURule{
+func DefaultUURule() SessionRule {
+	return SessionRule{
 		Process:      "UURemoteServer",
 		Assertion:    "UURemote Disable Display Sleep",
 		GraceSeconds: 5,
 	}
+}
+
+func DefaultRustDeskRule() SessionRule {
+	return SessionRule{
+		Process:      "RustDesk",
+		Arg:          "--server",
+		Assertion:    "User requested",
+		GraceSeconds: 5,
+	}
+}
+
+func (r SessionRule) orDefault(def SessionRule) SessionRule {
+	if r.Process == "" {
+		r.Process, r.Arg = def.Process, def.Arg
+	}
+	if r.Assertion == "" {
+		r.Assertion = def.Assertion
+	}
+	if r.GraceSeconds <= 0 {
+		r.GraceSeconds = def.GraceSeconds
+	}
+	return r
 }
 
 const DefaultDevice = "Apple iPad Pro 13-inch (M5)"
@@ -99,7 +129,7 @@ func Default() Config {
 	ipad.Device = DefaultDevice
 	ipad.Width, ipad.Height = 2048, 1536
 	ipad.Trigger = TriggerUU
-	return Config{Displays: []Display{ipad}, UU: DefaultUURule()}
+	return Config{Displays: []Display{ipad}, UU: DefaultUURule(), RustDesk: DefaultRustDeskRule()}
 }
 
 func NewDisplay(name string, a Aspect) Display {
@@ -174,7 +204,7 @@ func (d Display) Check() Problem {
 		return BadRefresh
 	case d.Serial == 0:
 		return BadSerial
-	case d.Trigger != TriggerManual && d.Trigger != TriggerUU:
+	case d.Trigger != TriggerManual && !d.Trigger.Remote():
 		return BadTrigger
 	}
 	return NoProblem
@@ -214,16 +244,8 @@ func (c *Config) Display(id string) (*Display, bool) {
 }
 
 func (c *Config) normalize() {
-	def := DefaultUURule()
-	if c.UU.Process == "" {
-		c.UU.Process = def.Process
-	}
-	if c.UU.Assertion == "" {
-		c.UU.Assertion = def.Assertion
-	}
-	if c.UU.GraceSeconds <= 0 {
-		c.UU.GraceSeconds = def.GraceSeconds
-	}
+	c.UU = c.UU.orDefault(DefaultUURule())
+	c.RustDesk = c.RustDesk.orDefault(DefaultRustDeskRule())
 	for i := range c.Displays {
 		d := &c.Displays[i]
 		if d.ID == "" {

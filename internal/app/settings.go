@@ -22,6 +22,7 @@ type Backend interface {
 	Status(id string) manager.Status
 	Wanted(id string) bool
 	UUStatus() uudetect.Status
+	RustDeskStatus() uudetect.Status
 	UUScreen() string
 	UUDevice() string
 	Devices() []string
@@ -49,7 +50,7 @@ type Backend interface {
 const generalPage = "general"
 
 var (
-	triggers       = []config.Trigger{config.TriggerManual, config.TriggerUU}
+	triggers       = []config.Trigger{config.TriggerManual, config.TriggerUU, config.TriggerRustDesk}
 	refreshPresets = []int{30, 60, 75, 90, 120, 144}
 )
 
@@ -466,7 +467,17 @@ func (s *Settings) needsSwitch() bool {
 }
 
 func (s *Settings) summary() string {
-	if s.saved.Trigger != config.TriggerUU {
+	switch s.saved.Trigger {
+	case config.TriggerUU:
+	case config.TriggerRustDesk:
+		switch s.b.RustDeskStatus().State {
+		case uudetect.Connected:
+			return locales.SummaryRustDeskConnected()
+		case uudetect.Idle:
+			return locales.SummaryRustDeskIdle()
+		}
+		return locales.SummaryRustDeskNotRunning()
+	default:
 		return locales.SummaryManual()
 	}
 	uu := s.b.UUStatus()
@@ -587,7 +598,7 @@ func (s *Settings) displayPage(c *ui.Context, p palette) {
 
 	section(c, p, locales.SectionMounting(), func() {
 		row(c, p, true, locales.FieldMount(), triggerHelp(triggers[s.trigger]), func() {
-			ui.Segmented(c.Key("trigger"), &s.trigger, locales.TriggerManual(), locales.TriggerUU()).Label(locales.LabelWhenToMount())
+			ui.Segmented(c.Key("trigger"), &s.trigger, locales.TriggerManual(), locales.TriggerUU(), locales.TriggerRustDesk()).Label(locales.LabelWhenToMount())
 		})
 		if triggers[s.trigger] == config.TriggerUU {
 			s.connectRow(c, p)
@@ -716,6 +727,19 @@ func (s *Settings) generalPage(c *ui.Context, p palette) {
 				}
 				dot(c, col)
 				ui.Text(c, uuLabel(st, s.b.UUDevice(), s.b.UUScreen())).TextColor(t.TextMuted)
+			})
+		})
+	})
+	section(c, p, locales.SectionRustDesk(), func() {
+		st := s.b.RustDeskStatus()
+		row(c, p, true, locales.FieldSession(), locales.HelpSessionRustDesk(), func() {
+			ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
+				col := t.TextMuted
+				if st.State == uudetect.Connected {
+					col = t.Success
+				}
+				dot(c, col)
+				ui.Text(c, sessionLabel(st.State)).TextColor(t.TextMuted)
 			})
 		})
 	})

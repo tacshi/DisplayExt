@@ -1,6 +1,7 @@
 package uudetect
 
 import (
+	"slices"
 	"testing"
 	"time"
 )
@@ -118,5 +119,22 @@ func TestSnapshotServer(t *testing.T) {
 	}
 	if got := absentSnap.Server(); got != 0 {
 		t.Errorf("no server: %d", got)
+	}
+}
+
+func TestParseProcArgs(t *testing.T) {
+	buf := []byte{2, 0, 0, 0}
+	buf = append(buf, "/Applications/RustDesk.app/Contents/MacOS/RustDesk\x00\x00\x00\x00"...)
+	buf = append(buf, "/Applications/RustDesk.app/Contents/MacOS/RustDesk\x00--server\x00HOME=/Users/me\x00"...)
+	got := ParseProcArgs(buf)
+	want := []string{"/Applications/RustDesk.app/Contents/MacOS/RustDesk", "--server"}
+	if !slices.Equal(got, want) {
+		t.Errorf("args %q, want %q", got, want)
+	}
+	if got := ParseProcArgs([]byte{1, 0}); got != nil {
+		t.Errorf("short buffer: %q", got)
+	}
+	if got := ParseProcArgs(append([]byte{2, 0, 0, 0}, "/bin/x\x00\x00x\x00-v"...)); !slices.Equal(got, []string{"x", "-v"}) {
+		t.Errorf("unterminated: %q", got)
 	}
 }

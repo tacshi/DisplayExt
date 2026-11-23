@@ -100,8 +100,8 @@ func TestDefaultIsValid(t *testing.T) {
 	if d.Trigger != TriggerUU || d.Name != "iPad" || d.RefreshHz != 60 || !d.HiDPI {
 		t.Errorf("unexpected default display %+v", d)
 	}
-	if c.UU != DefaultUURule() {
-		t.Errorf("default UU rule %+v", c.UU)
+	if c.UU != DefaultUURule() || c.RustDesk != DefaultRustDeskRule() {
+		t.Errorf("default rules %+v, %+v", c.UU, c.RustDesk)
 	}
 	if d.Label() != "iPad · 2048×1536 · 4:3" {
 		t.Errorf("label %q", d.Label())
@@ -238,8 +238,8 @@ func TestLoadFillsGaps(t *testing.T) {
 	if d.ID == "" || d.Serial == 0 || d.RefreshHz != 60 || d.Trigger != TriggerManual {
 		t.Errorf("gaps not filled: %+v", d)
 	}
-	if c.UU != DefaultUURule() {
-		t.Errorf("UU rule not defaulted: %+v", c.UU)
+	if c.UU != DefaultUURule() || c.RustDesk != DefaultRustDeskRule() {
+		t.Errorf("rules not defaulted: %+v, %+v", c.UU, c.RustDesk)
 	}
 	if err := d.Validate(); err != nil {
 		t.Error(err)
@@ -298,5 +298,40 @@ func TestCompactSize(t *testing.T) {
 	}
 	if got := (Aspect{W: 4, H: 3}).Sizes(true)[0]; got != (Size{1024, 768}) {
 		t.Errorf("4:3 first size = %v, want 1024×768", got)
+	}
+}
+
+func TestLoadKeepsRules(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	raw := `{"displays":[],"uu":{"process":"UU","assertion":"A","graceSeconds":9},"rustdesk":{"process":"MyDesk","assertion":""}}`
+	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (SessionRule{Process: "UU", Assertion: "A", GraceSeconds: 9}); c.UU != want {
+		t.Errorf("UU rule %+v, want %+v", c.UU, want)
+	}
+	if want := (SessionRule{Process: "MyDesk", Assertion: "User requested", GraceSeconds: 5}); c.RustDesk != want {
+		t.Errorf("RustDesk rule %+v, want %+v", c.RustDesk, want)
+	}
+}
+
+func TestTriggers(t *testing.T) {
+	d := Default().Displays[0]
+	for _, tr := range []Trigger{TriggerManual, TriggerUU, TriggerRustDesk} {
+		d.Trigger = tr
+		if err := d.Validate(); err != nil {
+			t.Errorf("%s: %v", tr, err)
+		}
+	}
+	d.Trigger = "teamviewer"
+	if d.Check() != BadTrigger {
+		t.Errorf("unknown trigger accepted")
+	}
+	if TriggerManual.Remote() || !TriggerUU.Remote() || !TriggerRustDesk.Remote() {
+		t.Error("Remote")
 	}
 }

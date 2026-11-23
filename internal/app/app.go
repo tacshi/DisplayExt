@@ -38,6 +38,7 @@ type App struct {
 	mgr      *manager.Manager
 	sw       *autoswitch.Switcher
 	uu       uudetect.Status
+	rd       uudetect.Status
 	uuScreen string
 	devices  *uuwindow.Watcher
 	trusted  bool
@@ -164,13 +165,9 @@ func (a *App) ready() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	a.stopUU = cancel
-	rule := uudetect.Rule{
-		Process:   a.cfg.UU.Process,
-		Assertion: a.cfg.UU.Assertion,
-		Grace:     time.Duration(a.cfg.UU.GraceSeconds) * time.Second,
-	}
+	rule := sessionRule(a.cfg.UU)
 	capture := uucapture.NewWatcher(func() int32 {
-		snap, err := uudetect.TakeSnapshot(rule.Process)
+		snap, err := rule.Snapshot()
 		if err != nil {
 			return 0
 		}
@@ -188,11 +185,23 @@ func (a *App) ready() {
 	go uudetect.Watch(ctx, rule, 2*time.Second, capture,
 		func(st uudetect.Status) { mygo.RunOnMain(func() { a.uuChanged(st) }) },
 		func(err error) { log.Println("uudetect:", err) })
+	go uudetect.Watch(ctx, sessionRule(a.cfg.RustDesk), 2*time.Second, nil,
+		func(st uudetect.Status) { mygo.RunOnMain(func() { a.rustDeskChanged(st) }) },
+		func(err error) { log.Println("RustDesk:", err) })
 
 	a.startUpdates()
 	a.apply()
 	if a.configKept != "" || (a.firstRun && !mygo.App.WasOpenedAtLogin()) {
 		a.showSettings()
+	}
+}
+
+func sessionRule(r config.SessionRule) uudetect.Rule {
+	return uudetect.Rule{
+		Process:   r.Process,
+		Arg:       r.Arg,
+		Assertion: r.Assertion,
+		Grace:     time.Duration(r.GraceSeconds) * time.Second,
 	}
 }
 
@@ -207,7 +216,7 @@ func (a *App) wanted() []config.Display {
 	var want []config.Display
 	for _, d := range a.cfg.Displays {
 		if d.Check() == config.NoProblem && a.sw.Want(d) {
-			d.ScreensOff = d.ScreensOff && a.sw.Connected()
+			d.ScreensOff = d.ScreensOff && a.sw.AnyConnected()
 			want = append(want, d)
 		}
 	}
@@ -242,10 +251,20 @@ func (a *App) uuChanged(st uudetect.Status) {
 	}
 	connected := st.State == uudetect.Connected
 	a.devices.SetActive(connected)
-	if a.sw.SetConnected(connected) {
+	if a.sw.SetConnected(config.TriggerUU, connected) {
 		if connected {
 			a.waitForDevice()
 		}
+		a.apply()
+		return
+	}
+	a.changed()
+}
+
+func (a *App) rustDeskChanged(st uudetect.Status) {
+	a.rd = st
+	log.Println("RustDesk:", st.State)
+	if a.sw.SetConnected(config.TriggerRustDesk, st.State == uudetect.Connected) {
 		a.apply()
 		return
 	}
@@ -262,7 +281,7 @@ func (a *App) waitForDevice() {
 	time.AfterFunc(deviceWait, func() {
 		mygo.RunOnMain(func() {
 			guess := a.guess()
-			if a.sw.Connected() && a.sw.Device() == "" && a.sw.SetBlind(guess) {
+			if a.sw.Connected(config.TriggerUU) && a.sw.Device() == "" && a.sw.SetBlind(guess) {
 				if guess != "" {
 					log.Printf("UU远程: could not tell which device connected within %s; assuming %s, the last one", deviceWait, guess)
 				} else {
@@ -338,10 +357,15 @@ func (a *App) saveConfig() error {
 }
 
 func (a *App) menu() *mygo.Menu {
-	items := []*mygo.MenuItem{
-		{Label: locales.MenuUUStatus(uuLabel(a.uu, a.sw.Device(), a.uuScreen)), Disabled: true},
-		mygo.Separator(),
+	var items []*mygo.MenuItem
+	rd := a.rd.State != uudetect.NotRunning || a.follows(config.TriggerRustDesk)
+	if !rd || a.uu.State != uudetect.NotRunning || a.follows(config.TriggerUU) {
+		items = append(items, &mygo.MenuItem{Label: locales.MenuUUStatus(uuLabel(a.uu, a.sw.Device(), a.uuScreen)), Disabled: true})
 	}
+	if rd {
+		items = append(items, &mygo.MenuItem{Label: locales.MenuRustDeskStatus(sessionLabel(a.rd.State)), Disabled: true})
+	}
+	items = append(items, mygo.Separator())
 	if a.unavailable != "" {
 		items = append(items, &mygo.MenuItem{Label: locales.MenuUnavailable(), Disabled: true, ToolTip: a.unavailable})
 	}
@@ -385,6 +409,10 @@ func (a *App) menu() *mygo.Menu {
 	return mygo.NewMenu(items)
 }
 
+func (a *App) follows(remote config.Trigger) bool {
+	return slices.ContainsFunc(a.cfg.Displays, func(d config.Display) bool { return d.Trigger == remote })
+}
+
 func subtitle(d config.Display, st manager.Status) string {
 	switch {
 	case d.Check() != config.NoProblem:
@@ -397,6 +425,8 @@ func subtitle(d config.Display, st manager.Status) string {
 		return locales.MenuFollowsDevice(d.ConnectFrom)
 	case d.Trigger == config.TriggerUU:
 		return locales.MenuFollowsUU()
+	case d.Trigger == config.TriggerRustDesk:
+		return locales.MenuFollowsRustDesk()
 	}
 	return ""
 }
@@ -405,6 +435,7 @@ func (a *App) Displays() []config.Display      { return a.cfg.Displays }
 func (a *App) Status(id string) manager.Status { return a.mgr.Status(id) }
 func (a *App) SettingsReset() string           { return a.configKept }
 func (a *App) UUStatus() uudetect.Status       { return a.uu }
+func (a *App) RustDeskStatus() uudetect.Status { return a.rd }
 func (a *App) UUScreen() string                { return a.uuScreen }
 func (a *App) UUDevice() string                { return a.sw.Device() }
 func (a *App) Devices() []string               { return a.cfg.Devices }

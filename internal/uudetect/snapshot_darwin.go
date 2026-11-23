@@ -3,7 +3,9 @@
 package uudetect
 
 import (
+	"encoding/binary"
 	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/ebitengine/purego"
@@ -14,6 +16,10 @@ const (
 	iokitPath  = "/System/Library/Frameworks/IOKit.framework/IOKit"
 	libSystem  = "/usr/lib/libSystem.B.dylib"
 	assertName = "AssertName"
+
+	ctlKern       = 1
+	kernArgMax    = 8
+	kernProcArgs2 = 49
 )
 
 var (
@@ -23,6 +29,10 @@ var (
 	iopmCopyAssertionsByProcess func(out *uintptr) int32
 	procListAllPIDs             func(buf *int32, size int32) int32
 	procName                    func(pid int32, buf *byte, size uint32) int32
+	sysctl                      func(name *int32, namelen uint32, oldp *byte, oldlenp *uintptr, newp *byte, newlen uintptr) int32
+
+	argMu  sync.Mutex
+	argBuf []byte
 )
 
 func load() error {
@@ -44,17 +54,22 @@ func load() error {
 		purego.RegisterLibFunc(&iopmCopyAssertionsByProcess, iokit, "IOPMCopyAssertionsByProcess")
 		purego.RegisterLibFunc(&procListAllPIDs, sys, "proc_listallpids")
 		purego.RegisterLibFunc(&procName, sys, "proc_name")
+		purego.RegisterLibFunc(&sysctl, sys, "sysctl")
 	})
 	return loadErr
 }
 
-func TakeSnapshot(process string) (Snapshot, error) {
+func TakeSnapshot(process string) (Snapshot, error) { return takeSnapshot(process, "") }
+
+func (r Rule) Snapshot() (Snapshot, error) { return takeSnapshot(r.Process, r.Arg) }
+
+func takeSnapshot(process, arg string) (Snapshot, error) {
 	if err := load(); err != nil {
 		return Snapshot{}, err
 	}
 	snap := Snapshot{Processes: map[int32]string{}, Assertions: map[int32][]string{}}
 	for _, pid := range allPIDs() {
-		if name := nameOf(pid); name == process {
+		if name := nameOf(pid); name == process && (arg == "" || hasArg(pid, arg)) {
 			snap.Processes[pid] = name
 		}
 	}
@@ -112,4 +127,33 @@ func nameOf(pid int32) string {
 		return ""
 	}
 	return string(buf[:n])
+}
+
+func hasArg(pid int32, arg string) bool {
+	argMu.Lock()
+	defer argMu.Unlock()
+	if argBuf == nil {
+		argBuf = make([]byte, argMax())
+	}
+	mib := [3]int32{ctlKern, kernProcArgs2, pid}
+	size := uintptr(len(argBuf))
+	if sysctl(&mib[0], uint32(len(mib)), &argBuf[0], &size, nil, 0) != 0 {
+		return false
+	}
+	args := ParseProcArgs(argBuf[:min(int(size), len(argBuf))])
+	return len(args) > 1 && slices.Contains(args[1:], arg)
+}
+
+func argMax() int {
+	mib := [2]int32{ctlKern, kernArgMax}
+	var out [4]byte
+	size := uintptr(len(out))
+	if sysctl(&mib[0], uint32(len(mib)), &out[0], &size, nil, 0) != 0 {
+		return 1 << 20
+	}
+	n := int(binary.LittleEndian.Uint32(out[:]))
+	if n <= 0 || n > 16<<20 {
+		return 1 << 20
+	}
+	return n
 }

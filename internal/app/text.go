@@ -33,6 +33,13 @@ func uuLabel(st uudetect.Status, device, screen string) string {
 		case screen != "":
 			return locales.UuConnectedShowing(screen)
 		}
+	}
+	return sessionLabel(st.State)
+}
+
+func sessionLabel(st uudetect.State) string {
+	switch st {
+	case uudetect.Connected:
 		return locales.UuConnected()
 	case uudetect.Idle:
 		return locales.UuIdle()
@@ -111,8 +118,11 @@ func problemText(d config.Display) string {
 }
 
 func triggerHelp(t config.Trigger) string {
-	if t == config.TriggerUU {
+	switch t {
+	case config.TriggerUU:
 		return locales.HelpTriggerUU()
+	case config.TriggerRustDesk:
+		return locales.HelpTriggerRustDesk()
 	}
 	return locales.HelpTriggerManual()
 }

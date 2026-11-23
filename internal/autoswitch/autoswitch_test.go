@@ -19,7 +19,7 @@ func TestFollowsSession(t *testing.T) {
 	if s.Want(uu) || s.Want(manual) {
 		t.Fatal("nothing should be mounted before a session")
 	}
-	if !s.SetConnected(true) {
+	if !s.SetConnected(config.TriggerUU, true) {
 		t.Fatal("connect not reported as a change")
 	}
 	if !s.Want(uu) {
@@ -28,10 +28,10 @@ func TestFollowsSession(t *testing.T) {
 	if s.Want(manual) {
 		t.Error("manual display mounted by a session")
 	}
-	if s.SetConnected(true) {
+	if s.SetConnected(config.TriggerUU, true) {
 		t.Error("repeated connect reported as a change")
 	}
-	s.SetConnected(false)
+	s.SetConnected(config.TriggerUU, false)
 	if s.Want(uu) {
 		t.Error("UU display still mounted after the session")
 	}
@@ -58,7 +58,7 @@ func TestOverrideUntilNextSessionChange(t *testing.T) {
 	if !s.Want(uu) {
 		t.Fatal("manual mount ignored")
 	}
-	s.SetConnected(true)
+	s.SetConnected(config.TriggerUU, true)
 	if !s.Want(uu) {
 		t.Fatal("not mounted during session")
 	}
@@ -66,8 +66,8 @@ func TestOverrideUntilNextSessionChange(t *testing.T) {
 	if s.Want(uu) {
 		t.Fatal("manual unmount ignored during session")
 	}
-	s.SetConnected(false)
-	s.SetConnected(true)
+	s.SetConnected(config.TriggerUU, false)
+	s.SetConnected(config.TriggerUU, true)
 	if !s.Want(uu) {
 		t.Error("next session did not mount the display")
 	}
@@ -96,7 +96,7 @@ func TestConnectFrom(t *testing.T) {
 	if s.SetDevice("Rocky的iPhone") {
 		t.Error("a device was taken with no session")
 	}
-	s.SetConnected(true)
+	s.SetConnected(config.TriggerUU, true)
 	if s.Want(phone) || s.Want(pad) || !s.Want(any) {
 		t.Errorf("before the device is known: phone %v pad %v any %v", s.Want(phone), s.Want(pad), s.Want(any))
 	}
@@ -106,8 +106,8 @@ func TestConnectFrom(t *testing.T) {
 	if !s.Want(phone) || s.Want(pad) || !s.Want(any) {
 		t.Errorf("iPhone connected: phone %v pad %v any %v", s.Want(phone), s.Want(pad), s.Want(any))
 	}
-	s.SetConnected(false)
-	s.SetConnected(true)
+	s.SetConnected(config.TriggerUU, false)
+	s.SetConnected(config.TriggerUU, true)
 	if s.Device() != "" {
 		t.Error("the device outlived the session")
 	}
@@ -118,5 +118,53 @@ func TestConnectFrom(t *testing.T) {
 	s.SetBlind("")
 	if !s.Want(phone) || !s.Want(pad) {
 		t.Error("unreadable with no guess: displays for a device stay unmounted")
+	}
+}
+
+func TestRustDesk(t *testing.T) {
+	s := New()
+	uu, manual := displays()
+	rd := config.NewDisplay("Studio", config.Presets[0])
+	rd.Trigger, rd.ConnectFrom = config.TriggerRustDesk, "Rocky的iPad"
+	if !s.SetConnected(config.TriggerRustDesk, true) {
+		t.Fatal("RustDesk connect not reported as a change")
+	}
+	if !s.Want(rd) || s.Want(uu) || s.Want(manual) {
+		t.Errorf("RustDesk session: rustdesk %v uu %v manual %v", s.Want(rd), s.Want(uu), s.Want(manual))
+	}
+	if !s.AnyConnected() || s.Connected(config.TriggerUU) {
+		t.Error("only RustDesk is connected")
+	}
+	if s.SetDevice("Rocky的iPhone") {
+		t.Error("a UU远程 device was taken during a RustDesk session")
+	}
+	s.SetConnected(config.TriggerUU, true)
+	if !s.Want(rd) || !s.Want(uu) {
+		t.Error("both sessions should mount their displays")
+	}
+	s.SetConnected(config.TriggerRustDesk, false)
+	if s.Want(rd) || !s.Want(uu) {
+		t.Errorf("RustDesk ended: rustdesk %v uu %v", s.Want(rd), s.Want(uu))
+	}
+	if s.SetConnected(config.TriggerManual, true) {
+		t.Error("manual is not a remote app")
+	}
+}
+
+func TestOverridesBelongToTheirApp(t *testing.T) {
+	s := New()
+	uu, _ := displays()
+	rd := config.NewDisplay("Studio", config.Presets[0])
+	rd.Trigger = config.TriggerRustDesk
+	s.Toggle(uu, true)
+	s.Toggle(rd, true)
+	s.SetConnected(config.TriggerRustDesk, true)
+	if !s.Want(uu) {
+		t.Error("a RustDesk session dropped a UU远程 display's override")
+	}
+	s.Toggle(rd, false)
+	s.SetConnected(config.TriggerUU, true)
+	if s.Want(rd) {
+		t.Error("a UU远程 session dropped a RustDesk display's override")
 	}
 }

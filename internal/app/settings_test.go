@@ -15,6 +15,7 @@ import (
 
 type fakeBackend struct {
 	uu       uudetect.Status
+	rd       uudetect.Status
 	screen   string
 	device   string
 	seen     []string
@@ -41,24 +42,25 @@ func (f *fakeBackend) Status(id string) manager.Status {
 	}
 	return manager.Status{Mounted: f.wanted[id], DisplayID: 7}
 }
-func (f *fakeBackend) Wanted(id string) bool         { return f.wanted[id] }
-func (f *fakeBackend) SettingsReset() string         { return f.reset }
-func (f *fakeBackend) UUStatus() uudetect.Status     { return f.uu }
-func (f *fakeBackend) UUScreen() string              { return f.screen }
-func (f *fakeBackend) UUDevice() string              { return f.device }
-func (f *fakeBackend) Devices() []string             { return f.seen }
-func (f *fakeBackend) AccessibilityAllowed() bool    { return f.trusted }
-func (f *fakeBackend) UUWindowClosed() bool          { return f.noWindow }
-func (f *fakeBackend) AllowAccessibility()           { f.asked = true }
-func (f *fakeBackend) Unavailable() string           { return "" }
-func (f *fakeBackend) OpenAtLogin() bool             { return f.login }
-func (f *fakeBackend) SetOpenAtLogin(on bool) error  { f.login = on; return nil }
-func (f *fakeBackend) SetMounted(id string, on bool) { f.wanted[id] = on }
-func (f *fakeBackend) Version() string               { return "0.1.0" }
-func (f *fakeBackend) LogFile() string               { return "~/Library/Logs/DisplayExt/DisplayExt.log" }
-func (f *fakeBackend) RevealLog()                    {}
-func (f *fakeBackend) Language() string              { return f.language }
-func (f *fakeBackend) SetLanguage(tag string)        { f.language = tag }
+func (f *fakeBackend) Wanted(id string) bool           { return f.wanted[id] }
+func (f *fakeBackend) SettingsReset() string           { return f.reset }
+func (f *fakeBackend) UUStatus() uudetect.Status       { return f.uu }
+func (f *fakeBackend) RustDeskStatus() uudetect.Status { return f.rd }
+func (f *fakeBackend) UUScreen() string                { return f.screen }
+func (f *fakeBackend) UUDevice() string                { return f.device }
+func (f *fakeBackend) Devices() []string               { return f.seen }
+func (f *fakeBackend) AccessibilityAllowed() bool      { return f.trusted }
+func (f *fakeBackend) UUWindowClosed() bool            { return f.noWindow }
+func (f *fakeBackend) AllowAccessibility()             { f.asked = true }
+func (f *fakeBackend) Unavailable() string             { return "" }
+func (f *fakeBackend) OpenAtLogin() bool               { return f.login }
+func (f *fakeBackend) SetOpenAtLogin(on bool) error    { f.login = on; return nil }
+func (f *fakeBackend) SetMounted(id string, on bool)   { f.wanted[id] = on }
+func (f *fakeBackend) Version() string                 { return "0.1.0" }
+func (f *fakeBackend) LogFile() string                 { return "~/Library/Logs/DisplayExt/DisplayExt.log" }
+func (f *fakeBackend) RevealLog()                      {}
+func (f *fakeBackend) Language() string                { return f.language }
+func (f *fakeBackend) SetLanguage(tag string)          { f.language = tag }
 func (f *fakeBackend) Delete(id string) {
 	f.displays = slices.DeleteFunc(f.displays, func(d config.Display) bool { return d.ID == id })
 }
@@ -657,5 +659,41 @@ func TestUnsavedChangesShowInTheFooter(t *testing.T) {
 	tt.Frame()
 	if !tt.HasText("Unsaved changes") {
 		t.Errorf("no unsaved-changes note: %q", tt.Texts())
+	}
+}
+
+func TestMountWithRustDesk(t *testing.T) {
+	f := newFake()
+	s := NewSettings(f)
+	tt := newTester(s)
+	s.trigger = slices.Index(triggers, config.TriggerRustDesk)
+	tt.Frame()
+	if !tt.HasText("Mounted while a RustDesk session is connected, unmounted a few seconds after it ends.") {
+		t.Errorf("no RustDesk help: %q", tt.Texts())
+	}
+	if tt.HasText("Connect from") {
+		t.Error("Connect from shows for a display that follows RustDesk")
+	}
+	if err := tt.Click("Save"); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.displays[0].Trigger; got != config.TriggerRustDesk {
+		t.Fatalf("saved trigger %q", got)
+	}
+	tt.Frame()
+	if !tt.HasText("Follows RustDesk · RustDesk is not running") {
+		t.Errorf("summary before RustDesk runs: %q", tt.Texts())
+	}
+	f.rd = uudetect.Status{State: uudetect.Connected}
+	tt.Frame()
+	if !tt.HasText("Follows RustDesk · session connected") {
+		t.Errorf("summary during a session: %q", tt.Texts())
+	}
+	if err := tt.Click("General"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("RustDesk") || !tt.HasText("Connected") {
+		t.Errorf("no RustDesk session row: %q", tt.Texts())
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"displayext/internal/autoswitch"
 	"displayext/internal/config"
 	"displayext/internal/manager"
+	"displayext/internal/uudetect"
 )
 
 func TestAppName(t *testing.T) {
@@ -33,7 +34,7 @@ func testApp(t *testing.T, ds ...config.Display) *App {
 	t.Cleanup(m.StopAll)
 	return &App{
 		cfgPath: filepath.Join(t.TempDir(), "config.json"),
-		cfg:     config.Config{Displays: ds, UU: config.DefaultUURule()},
+		cfg:     config.Config{Displays: ds, UU: config.DefaultUURule(), RustDesk: config.DefaultRustDeskRule()},
 		sw:      autoswitch.New(),
 		mgr:     m,
 	}
@@ -85,7 +86,7 @@ func TestScreensOffOnlyWhileConnected(t *testing.T) {
 			t.Errorf("%s turns screens off with no UU远程 session", d.Name)
 		}
 	}
-	a.sw.SetConnected(true)
+	a.sw.SetConnected(config.TriggerUU, true)
 	want := a.wanted()
 	if len(want) != 2 {
 		t.Fatalf("wanted %d displays while connected, want 2", len(want))
@@ -147,5 +148,28 @@ func TestLoadConfigKeepsOtherErrors(t *testing.T) {
 	}
 	if a.configKept != "" {
 		t.Error("moved aside a file that was not damaged")
+	}
+}
+
+func TestRustDeskSessionMountsItsDisplays(t *testing.T) {
+	uu := config.NewDisplay("UU", config.Presets[0])
+	uu.Trigger = config.TriggerUU
+	rd := config.NewDisplay("RustDesk", config.Presets[0])
+	rd.Trigger, rd.ScreensOff = config.TriggerRustDesk, true
+	a := testApp(t, uu, rd)
+	if len(a.wanted()) != 0 {
+		t.Fatal("displays wanted with no session")
+	}
+	a.rustDeskChanged(uudetect.Status{State: uudetect.Connected})
+	want := a.wanted()
+	if len(want) != 1 || want[0].ID != rd.ID || !want[0].ScreensOff {
+		t.Errorf("during a RustDesk session: %+v", want)
+	}
+	if !a.follows(config.TriggerRustDesk) || !a.follows(config.TriggerUU) {
+		t.Error("follows")
+	}
+	a.rustDeskChanged(uudetect.Status{State: uudetect.Idle})
+	if len(a.wanted()) != 0 {
+		t.Error("the display stayed after the RustDesk session")
 	}
 }

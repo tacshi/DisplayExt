@@ -6,7 +6,7 @@
 
 <p align="center">
   A small macOS menu bar app that creates virtual displays,<br>
-  and mounts one automatically while a UU远程 session is connected.
+  and mounts one automatically while a UU远程 or RustDesk session is connected.
 </p>
 
 <p align="center">
@@ -44,10 +44,11 @@ DisplayExt does just this one job, and does it from the menu bar.
 - **HiDPI.** "Looks like" 2048 × 1536, rendered at 4096 × 3072 pixels. Sizes
   too small for macOS to offer HiDPI are not listed.
 - **Any refresh rate** from 1 to 240 Hz, with presets up to 144 Hz.
-- **Mounts with UU远程.** A display can follow UU远程 sessions: it is mounted
-  as a session connects, and unmounted a few seconds after it ends.
+- **Mounts with UU远程 or RustDesk.** Each display can follow UU远程 sessions
+  or RustDesk sessions, as you choose: it is mounted as a session connects,
+  and unmounted a few seconds after it ends.
 - **Turns off your other screens during sessions, if you like.** While a
-  UU远程 session is connected and a display is mounted, the Mac's own screens
+  UU远程 or RustDesk session is connected and a display is mounted, the Mac's own screens
   can go dark and their windows move to it. They come back when the session
   ends, even if DisplayExt quits unexpectedly. A display mounted with no
   session leaves them on, so you can still see what you are doing.
@@ -61,9 +62,10 @@ DisplayExt does just this one job, and does it from the menu bar.
 ## Requirements
 
 - macOS 13 or later. Tested on macOS 27 on Apple silicon.
-- UU远程 4.47 or later for mounting with sessions and turning other screens
-  off. With other remote apps, mount displays from the menu; the Mac's own
-  screens stay on.
+- UU远程 4.47 or later, or RustDesk 1.5.3 or later, for mounting with
+  sessions and turning other screens off. In RustDesk, leave **Keep screen
+  awake during incoming sessions** on, as it is by default. With other remote
+  apps, mount displays from the menu; the Mac's own screens stay on.
 
 ## Install
 
@@ -90,7 +92,8 @@ in the menu looks right away and shows the release notes.
    displays with **Add Display**.
 3. Connect to the Mac from the iPad with UU远程. DisplayExt mounts the
    display within a few seconds; choose it in UU远程's screen switcher.
-   Disconnect, and it is unmounted.
+   Disconnect, and it is unmounted. To follow RustDesk instead, set
+   **Mount** to **With RustDesk**.
 4. To mount a display by hand, tick it in the menu, or click **Mount** in
    Settings. Displays set to **Manually** remember whether they were mounted
    across launches.
@@ -102,7 +105,7 @@ UU远程's toolbars.
 <img src="docs/images/settings-picker.png" alt="Choosing a device">
 
 Turn on **Open at login** on the General page, where you can also choose the
-language and see whether a UU远程 session is connected.
+language and see whether a UU远程 or RustDesk session is connected.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/general-dark.png">
@@ -153,6 +156,13 @@ language and see whether a UU远程 session is connected.
   with a reminder to choose the virtual display in UU远程 when it is another.
   When DisplayExt opens during a session, it reads the last four hours of the
   log to catch up.
+- **RustDesk sessions.** While a session is connected, RustDesk's server
+  process, `RustDesk --server`, keeps the screen awake with a power assertion
+  named `User requested`, as long as **Keep screen awake during incoming
+  sessions** is on. DisplayExt looks for it every two seconds, in that process
+  only, so keeping the screen awake while this Mac controls another doesn't
+  count; it waits five seconds after the assertion goes before unmounting.
+  **Connect from** and the screen being shown are read from UU远程 only.
 - **Other screens.** Rather than switching them off, DisplayExt mirrors the
   Mac's own screens to the virtual display and sets them to black. A screen
   that disappears ends any screen recording tied to it, and UU远程 records the
@@ -165,7 +175,8 @@ language and see whether a UU远程 session is connected.
 - A private API can change in any macOS release. If it does, DisplayExt says
   so in its menu and settings instead of crashing.
 - UU远程's session signal is not a public interface either. It was verified
-  with UU远程 4.47; `go run ./cmd/uuwatch` prints what DisplayExt sees.
+  with UU远程 4.47; `go run ./cmd/uuwatch` prints what DisplayExt sees, and
+  `go run ./cmd/uuwatch -app rustdesk` does the same for RustDesk.
 - macOS remembers each display's arrangement and resolution by its identity.
   Every display keeps one identity for life, so it comes back where you put
   it. macOS also writes one color profile per identity to
@@ -175,7 +186,7 @@ language and see whether a UU远程 session is connected.
   file can't be read, DisplayExt keeps it beside the new one as
   `config-damaged-<date>.json` and starts over with its defaults.
 - A display that fails to mount is not tried again until you turn it off and
-  on, change its settings, or a new UU远程 session starts.
+  on, change its settings, or a new session starts.
 
 ## Build from source
 

@@ -44,6 +44,16 @@ func (msgs Messages) MenuUUStatus(status string) string {
 	return Catalog.Format(msgs.locale, "menuUUStatus", map[string]any{"status": status})
 }
 
+// MenuRustDeskStatus says "RustDesk: {status}"
+// in the language the app shows.
+func MenuRustDeskStatus(status string) string { return In(i18n.Locale()).MenuRustDeskStatus(status) }
+
+// MenuRustDeskStatus says "RustDesk: {status}"
+// in the language of msgs.
+func (msgs Messages) MenuRustDeskStatus(status string) string {
+	return Catalog.Format(msgs.locale, "menuRustDeskStatus", map[string]any{"status": status})
+}
+
 // MenuUnavailable says "Virtual displays unavailable"
 // in the language the app shows.
 func MenuUnavailable() string { return In(i18n.Locale()).MenuUnavailable() }
@@ -122,6 +132,16 @@ func MenuFollowsDevice(device string) string { return In(i18n.Locale()).MenuFoll
 // in the language of msgs.
 func (msgs Messages) MenuFollowsDevice(device string) string {
 	return Catalog.Format(msgs.locale, "menuFollowsDevice", map[string]any{"device": device})
+}
+
+// MenuFollowsRustDesk says "Follows RustDesk"
+// in the language the app shows.
+func MenuFollowsRustDesk() string { return In(i18n.Locale()).MenuFollowsRustDesk() }
+
+// MenuFollowsRustDesk says "Follows RustDesk"
+// in the language of msgs.
+func (msgs Messages) MenuFollowsRustDesk() string {
+	return Catalog.Format(msgs.locale, "menuFollowsRustDesk", nil)
 }
 
 // Working says "Working…"
@@ -316,11 +336,11 @@ func (msgs Messages) EmptyTitle() string {
 	return Catalog.Format(msgs.locale, "emptyTitle", nil)
 }
 
-// EmptyBody says "Add one, pick the device you connect from, and mount it from the menu bar or with UU远程."
+// EmptyBody says "Add one, pick the device you connect from, and mount it from the menu bar or with UU远程 or RustDesk."
 // in the language the app shows.
 func EmptyBody() string { return In(i18n.Locale()).EmptyBody() }
 
-// EmptyBody says "Add one, pick the device you connect from, and mount it from the menu bar or with UU远程."
+// EmptyBody says "Add one, pick the device you connect from, and mount it from the menu bar or with UU远程 or RustDesk."
 // in the language of msgs.
 func (msgs Messages) EmptyBody() string {
 	return Catalog.Format(msgs.locale, "emptyBody", nil)
@@ -676,6 +696,16 @@ func (msgs Messages) TriggerUU() string {
 	return Catalog.Format(msgs.locale, "triggerUU", nil)
 }
 
+// TriggerRustDesk says "With RustDesk"
+// in the language the app shows.
+func TriggerRustDesk() string { return In(i18n.Locale()).TriggerRustDesk() }
+
+// TriggerRustDesk says "With RustDesk"
+// in the language of msgs.
+func (msgs Messages) TriggerRustDesk() string {
+	return Catalog.Format(msgs.locale, "triggerRustDesk", nil)
+}
+
 // HelpTriggerManual says "Mounted and unmounted from the menu bar."
 // in the language the app shows.
 func HelpTriggerManual() string { return In(i18n.Locale()).HelpTriggerManual() }
@@ -696,6 +726,16 @@ func (msgs Messages) HelpTriggerUU() string {
 	return Catalog.Format(msgs.locale, "helpTriggerUU", nil)
 }
 
+// HelpTriggerRustDesk says "Mounted while a RustDesk session is connected, unmounted a few seconds after it ends."
+// in the language the app shows.
+func HelpTriggerRustDesk() string { return In(i18n.Locale()).HelpTriggerRustDesk() }
+
+// HelpTriggerRustDesk says "Mounted while a RustDesk session is connected, unmounted a few seconds after it ends."
+// in the language of msgs.
+func (msgs Messages) HelpTriggerRustDesk() string {
+	return Catalog.Format(msgs.locale, "helpTriggerRustDesk", nil)
+}
+
 // FieldScreensOff says "Turn off other screens"
 // in the language the app shows.
 func FieldScreensOff() string { return In(i18n.Locale()).FieldScreensOff() }
@@ -706,11 +746,11 @@ func (msgs Messages) FieldScreensOff() string {
 	return Catalog.Format(msgs.locale, "fieldScreensOff", nil)
 }
 
-// HelpScreensOff says "While a UU远程 session is connected, this Mac's other screens go dark and their windows move here. They come back w…"
+// HelpScreensOff says "While a UU远程 or RustDesk session is connected, this Mac's other screens go dark and their windows move here. They…"
 // in the language the app shows.
 func HelpScreensOff() string { return In(i18n.Locale()).HelpScreensOff() }
 
-// HelpScreensOff says "While a UU远程 session is connected, this Mac's other screens go dark and their windows move here. They come back w…"
+// HelpScreensOff says "While a UU远程 or RustDesk session is connected, this Mac's other screens go dark and their windows move here. They…"
 // in the language of msgs.
 func (msgs Messages) HelpScreensOff() string {
 	return Catalog.Format(msgs.locale, "helpScreensOff", nil)
@@ -990,6 +1030,36 @@ func (msgs Messages) SummaryUUShowingOther(screen string) string {
 	return Catalog.Format(msgs.locale, "summaryUUShowingOther", map[string]any{"screen": screen})
 }
 
+// SummaryRustDeskConnected says "Follows RustDesk · session connected"
+// in the language the app shows.
+func SummaryRustDeskConnected() string { return In(i18n.Locale()).SummaryRustDeskConnected() }
+
+// SummaryRustDeskConnected says "Follows RustDesk · session connected"
+// in the language of msgs.
+func (msgs Messages) SummaryRustDeskConnected() string {
+	return Catalog.Format(msgs.locale, "summaryRustDeskConnected", nil)
+}
+
+// SummaryRustDeskIdle says "Follows RustDesk · no session"
+// in the language the app shows.
+func SummaryRustDeskIdle() string { return In(i18n.Locale()).SummaryRustDeskIdle() }
+
+// SummaryRustDeskIdle says "Follows RustDesk · no session"
+// in the language of msgs.
+func (msgs Messages) SummaryRustDeskIdle() string {
+	return Catalog.Format(msgs.locale, "summaryRustDeskIdle", nil)
+}
+
+// SummaryRustDeskNotRunning says "Follows RustDesk · RustDesk is not running"
+// in the language the app shows.
+func SummaryRustDeskNotRunning() string { return In(i18n.Locale()).SummaryRustDeskNotRunning() }
+
+// SummaryRustDeskNotRunning says "Follows RustDesk · RustDesk is not running"
+// in the language of msgs.
+func (msgs Messages) SummaryRustDeskNotRunning() string {
+	return Catalog.Format(msgs.locale, "summaryRustDeskNotRunning", nil)
+}
+
 // HintChooseInUU says "To see this display, choose “{name}” in UU远程's screen switcher."
 // in the language the app shows.
 func HintChooseInUU(name string) string { return In(i18n.Locale()).HintChooseInUU(name) }
@@ -1108,6 +1178,26 @@ func HelpSession() string { return In(i18n.Locale()).HelpSession() }
 // in the language of msgs.
 func (msgs Messages) HelpSession() string {
 	return Catalog.Format(msgs.locale, "helpSession", nil)
+}
+
+// SectionRustDesk says "RustDesk"
+// in the language the app shows.
+func SectionRustDesk() string { return In(i18n.Locale()).SectionRustDesk() }
+
+// SectionRustDesk says "RustDesk"
+// in the language of msgs.
+func (msgs Messages) SectionRustDesk() string {
+	return Catalog.Format(msgs.locale, "sectionRustDesk", nil)
+}
+
+// HelpSessionRustDesk says "Displays set to mount with RustDesk follow this. DisplayExt sees a session through RustDesk's “Keep screen awake du…"
+// in the language the app shows.
+func HelpSessionRustDesk() string { return In(i18n.Locale()).HelpSessionRustDesk() }
+
+// HelpSessionRustDesk says "Displays set to mount with RustDesk follow this. DisplayExt sees a session through RustDesk's “Keep screen awake du…"
+// in the language of msgs.
+func (msgs Messages) HelpSessionRustDesk() string {
+	return Catalog.Format(msgs.locale, "helpSessionRustDesk", nil)
 }
 
 // SectionLanguage says "Language"

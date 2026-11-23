@@ -1,7 +1,9 @@
 package uudetect
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"slices"
 	"time"
 )
@@ -30,6 +32,7 @@ func (s State) String() string {
 
 type Rule struct {
 	Process   string
+	Arg       string
 	Assertion string
 
 	Grace time.Duration
@@ -121,7 +124,7 @@ func Watch(ctx context.Context, r Rule, interval time.Duration, capture Capture,
 	var last Status
 	started := false
 	for {
-		snap, err := TakeSnapshot(r.Process)
+		snap, err := r.Snapshot()
 		if err != nil {
 			if onError != nil {
 				onError(err)
@@ -151,4 +154,27 @@ func Watch(ctx context.Context, r Rule, interval time.Duration, capture Capture,
 		case <-wake:
 		}
 	}
+}
+
+func ParseProcArgs(buf []byte) []string {
+	if len(buf) < 4 {
+		return nil
+	}
+	argc := int(int32(binary.LittleEndian.Uint32(buf)))
+	rest := buf[4:]
+	end := bytes.IndexByte(rest, 0)
+	if end < 0 {
+		return nil
+	}
+	rest = bytes.TrimLeft(rest[end:], "\x00")
+	var args []string
+	for len(args) < argc && len(rest) > 0 {
+		end := bytes.IndexByte(rest, 0)
+		if end < 0 {
+			end = len(rest)
+		}
+		args = append(args, string(rest[:end]))
+		rest = rest[min(end+1, len(rest)):]
+	}
+	return args
 }
